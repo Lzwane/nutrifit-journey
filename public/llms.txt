@@ -1,0 +1,9 @@
+# NutriFit
+
+> All-in-one health & fitness platform: workouts, nutrition, recipes, community and an AI coach.
+
+NutriFit helps users achieve health goals with guided workouts, macro tracking, healthy recipes, local fitness communities, and a personalized AI fitness coach. Premium subscription is R49/month.
+
+## Pages
+- [Home](/): Landing page with overview, features and pricing.
+- [Sign in](/auth): Sign in or create an account.
