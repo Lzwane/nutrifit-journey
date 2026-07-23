@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { NutriFitWordmark, NutriFitLogo } from "./logo";
 
-const nav = [
+const nav: Array<{ to: string; label: string; icon: typeof Home; exact?: boolean }> = [
   { to: "/app", label: "Home", icon: Home, exact: true },
   { to: "/app/workouts", label: "Workouts", icon: Dumbbell },
   { to: "/app/nutrition", label: "Nutrition", icon: Apple },
@@ -12,7 +12,7 @@ const nav = [
   { to: "/app/community", label: "Community", icon: Users },
   { to: "/app/coach", label: "AI Coach", icon: Sparkles },
   { to: "/app/profile", label: "Profile", icon: UserIcon },
-] as const;
+];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
