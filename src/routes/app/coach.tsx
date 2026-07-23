@@ -20,7 +20,7 @@ function CoachPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    loadHistory().then((r) => setMessages(r.messages)).catch(() => {});
+    loadHistory().then((r) => setMessages(r.messages as Msg[])).catch(() => {});
   }, []);
 
   useEffect(() => {
