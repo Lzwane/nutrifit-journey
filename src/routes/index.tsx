@@ -17,16 +17,20 @@ export const Route = createFileRoute("/")({
 function Landing() {
   return (
     <div className="min-h-screen bg-background text-foreground">
+      {/* Header */}
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
         <NutriFitWordmark />
         <div className="flex items-center gap-3">
-          <Link to="/auth" className="text-sm font-medium text-muted-foreground hover:text-foreground">Sign in</Link>
+          <Link to="/auth" className="text-sm font-medium text-muted-foreground hover:text-foreground">
+            Sign in
+          </Link>
           <Link to="/auth" className="rounded-xl gradient-brand px-4 py-2 text-sm font-semibold text-white shadow-soft">
             Get started
           </Link>
         </div>
       </header>
 
+      {/* Hero Section */}
       <section className="mx-auto max-w-6xl px-6 pt-12 pb-20 lg:pt-24">
         <div className="grid gap-12 lg:grid-cols-2 lg:items-center">
           <div>
@@ -62,6 +66,7 @@ function Landing() {
         </div>
       </section>
 
+      {/* Pricing Section */}
       <section id="pricing" className="mx-auto max-w-6xl px-6 pb-24">
         <div className="grid gap-6 md:grid-cols-2">
           <PlanCard
@@ -86,6 +91,7 @@ function Landing() {
         </div>
       </section>
 
+      {/* Footer */}
       <footer className="border-t border-border">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-8 md:flex-row">
           <NutriFitWordmark />

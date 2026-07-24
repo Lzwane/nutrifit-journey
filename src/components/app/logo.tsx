@@ -1,9 +1,9 @@
-import logoAsset from "@/assets/nutrifit-logo.jpg.asset.json";
+import nutrifitLogo from "@/assets/Nutrifit logo.jpeg";
 
 export function NutriFitLogo({ className = "h-10 w-10" }: { className?: string }) {
   return (
     <img
-      src={logoAsset.url}
+      src={nutrifitLogo}
       alt="NutriFit logo"
       className={`${className} rounded-xl object-cover`}
     />
@@ -28,3 +28,6 @@ export function NutriFitWordmark({ compact = false }: { compact?: boolean }) {
     </div>
   );
 }
+
+export const Logo = NutriFitWordmark;
+export default NutriFitWordmark;

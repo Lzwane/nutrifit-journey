@@ -1,5 +1,8 @@
 {
   "schemaVersion": 1,
   "template": "tanstack_start_ts_current",
-  "revision": "tanstack_start_ts_current-d90609737e4d"
+  "revision": "tanstack_start_ts_current-d90609737e4d",
+  "branding": {
+    "logo": "src/assets/Nutrifit logo.jpeg"
+  }
 }

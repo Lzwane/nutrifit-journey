@@ -9,28 +9,23 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
-import { Route as AuthRouteImport } from './routes/auth'
-import { Route as AppRouteRouteImport } from './routes/app/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppRouteRouteImport } from './routes/app/route'
+import { Route as AuthRouteImport } from './routes/auth'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as AppIndexRouteImport } from './routes/app/index'
-import { Route as AppProfileRouteImport } from './routes/app/profile'
-import { Route as AppNutritionRouteImport } from './routes/app/nutrition'
-import { Route as AppCommunityRouteImport } from './routes/app/community'
 import { Route as AppCoachRouteImport } from './routes/app/coach'
-import { Route as AppWorkoutsIndexRouteImport } from './routes/app/workouts.index'
+import { Route as AppCommunityRouteImport } from './routes/app/community'
+import { Route as AppNutritionRouteImport } from './routes/app/nutrition'
+import { Route as AppProfileRouteImport } from './routes/app/profile'
 import { Route as AppRecipesIndexRouteImport } from './routes/app/recipes.index'
-import { Route as AppWorkoutsIdRouteImport } from './routes/app/workouts.$id'
 import { Route as AppRecipesIdRouteImport } from './routes/app/recipes.$id'
+import { Route as AppWorkoutsIndexRouteImport } from './routes/app/workouts.index'
+import { Route as AppWorkoutsIdRouteImport } from './routes/app/workouts.$id'
 
-const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
-  id: '/sitemap.xml',
-  path: '/sitemap.xml',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AuthRoute = AuthRouteImport.update({
-  id: '/auth',
-  path: '/auth',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppRouteRoute = AppRouteRouteImport.update({
@@ -38,9 +33,14 @@ const AppRouteRoute = AppRouteRouteImport.update({
   path: '/app',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppIndexRoute = AppIndexRouteImport.update({
@@ -48,14 +48,9 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRouteRoute,
 } as any)
-const AppProfileRoute = AppProfileRouteImport.update({
-  id: '/profile',
-  path: '/profile',
-  getParentRoute: () => AppRouteRoute,
-} as any)
-const AppNutritionRoute = AppNutritionRouteImport.update({
-  id: '/nutrition',
-  path: '/nutrition',
+const AppCoachRoute = AppCoachRouteImport.update({
+  id: '/coach',
+  path: '/coach',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppCommunityRoute = AppCommunityRouteImport.update({
@@ -63,14 +58,14 @@ const AppCommunityRoute = AppCommunityRouteImport.update({
   path: '/community',
   getParentRoute: () => AppRouteRoute,
 } as any)
-const AppCoachRoute = AppCoachRouteImport.update({
-  id: '/coach',
-  path: '/coach',
+const AppNutritionRoute = AppNutritionRouteImport.update({
+  id: '/nutrition',
+  path: '/nutrition',
   getParentRoute: () => AppRouteRoute,
 } as any)
-const AppWorkoutsIndexRoute = AppWorkoutsIndexRouteImport.update({
-  id: '/workouts/',
-  path: '/workouts/',
+const AppProfileRoute = AppProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppRecipesIndexRoute = AppRecipesIndexRouteImport.update({
@@ -78,14 +73,19 @@ const AppRecipesIndexRoute = AppRecipesIndexRouteImport.update({
   path: '/recipes/',
   getParentRoute: () => AppRouteRoute,
 } as any)
-const AppWorkoutsIdRoute = AppWorkoutsIdRouteImport.update({
-  id: '/workouts/$id',
-  path: '/workouts/$id',
-  getParentRoute: () => AppRouteRoute,
-} as any)
 const AppRecipesIdRoute = AppRecipesIdRouteImport.update({
   id: '/recipes/$id',
   path: '/recipes/$id',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppWorkoutsIndexRoute = AppWorkoutsIndexRouteImport.update({
+  id: '/workouts/',
+  path: '/workouts/',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppWorkoutsIdRoute = AppWorkoutsIdRouteImport.update({
+  id: '/workouts/$id',
+  path: '/workouts/$id',
   getParentRoute: () => AppRouteRoute,
 } as any)
 
@@ -190,18 +190,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/sitemap.xml': {
-      id: '/sitemap.xml'
-      path: '/sitemap.xml'
-      fullPath: '/sitemap.xml'
-      preLoaderRoute: typeof SitemapDotxmlRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/auth': {
-      id: '/auth'
-      path: '/auth'
-      fullPath: '/auth'
-      preLoaderRoute: typeof AuthRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app': {
@@ -211,11 +204,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app/': {
@@ -225,18 +225,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/app/profile': {
-      id: '/app/profile'
-      path: '/profile'
-      fullPath: '/app/profile'
-      preLoaderRoute: typeof AppProfileRouteImport
-      parentRoute: typeof AppRouteRoute
-    }
-    '/app/nutrition': {
-      id: '/app/nutrition'
-      path: '/nutrition'
-      fullPath: '/app/nutrition'
-      preLoaderRoute: typeof AppNutritionRouteImport
+    '/app/coach': {
+      id: '/app/coach'
+      path: '/coach'
+      fullPath: '/app/coach'
+      preLoaderRoute: typeof AppCoachRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/app/community': {
@@ -246,18 +239,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCommunityRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/app/coach': {
-      id: '/app/coach'
-      path: '/coach'
-      fullPath: '/app/coach'
-      preLoaderRoute: typeof AppCoachRouteImport
+    '/app/nutrition': {
+      id: '/app/nutrition'
+      path: '/nutrition'
+      fullPath: '/app/nutrition'
+      preLoaderRoute: typeof AppNutritionRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/app/workouts/': {
-      id: '/app/workouts/'
-      path: '/workouts'
-      fullPath: '/app/workouts/'
-      preLoaderRoute: typeof AppWorkoutsIndexRouteImport
+    '/app/profile': {
+      id: '/app/profile'
+      path: '/profile'
+      fullPath: '/app/profile'
+      preLoaderRoute: typeof AppProfileRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/app/recipes/': {
@@ -267,18 +260,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRecipesIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/app/workouts/$id': {
-      id: '/app/workouts/$id'
-      path: '/workouts/$id'
-      fullPath: '/app/workouts/$id'
-      preLoaderRoute: typeof AppWorkoutsIdRouteImport
-      parentRoute: typeof AppRouteRoute
-    }
     '/app/recipes/$id': {
       id: '/app/recipes/$id'
       path: '/recipes/$id'
       fullPath: '/app/recipes/$id'
       preLoaderRoute: typeof AppRecipesIdRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/workouts/': {
+      id: '/app/workouts/'
+      path: '/workouts'
+      fullPath: '/app/workouts/'
+      preLoaderRoute: typeof AppWorkoutsIndexRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/workouts/$id': {
+      id: '/app/workouts/$id'
+      path: '/workouts/$id'
+      fullPath: '/app/workouts/$id'
+      preLoaderRoute: typeof AppWorkoutsIdRouteImport
       parentRoute: typeof AppRouteRoute
     }
   }
@@ -321,3 +321,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

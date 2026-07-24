@@ -31,7 +31,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-border bg-card lg:flex lg:flex-col">
         <div className="p-5">
-          <Link to="/app"><NutriFitWordmark /></Link>
+          <Link to="/app">
+            <NutriFitWordmark />
+          </Link>
         </div>
         <nav className="flex-1 space-y-1 px-3">
           {nav.map((n) => {
@@ -68,7 +70,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {/* Mobile top bar */}
       <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-border bg-card/80 px-4 backdrop-blur lg:hidden">
-        <Link to="/app"><NutriFitLogo className="h-8 w-8" /></Link>
+        <Link to="/app">
+          <NutriFitLogo className="h-8 w-8" />
+        </Link>
         <button
           onClick={signOut}
           className="rounded-lg p-2 text-muted-foreground hover:bg-muted"
@@ -78,12 +82,12 @@ export function AppShell({ children }: { children: ReactNode }) {
         </button>
       </header>
 
-      {/* Main */}
+      {/* Main content */}
       <main className="pb-24 lg:pb-8 lg:pl-64">
         <div className="mx-auto max-w-5xl px-4 py-6 lg:px-8">{children}</div>
       </main>
 
-      {/* Mobile bottom nav */}
+      {/* Mobile bottom navigation */}
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/95 backdrop-blur lg:hidden">
         <div className="grid grid-cols-7">
           {nav.map((n) => {
@@ -107,3 +111,5 @@ export function AppShell({ children }: { children: ReactNode }) {
     </div>
   );
 }
+
+export default AppShell;
