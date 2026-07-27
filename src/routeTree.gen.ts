@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteRouteImport } from './routes/app/route'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppCoachRouteImport } from './routes/app/coach'
@@ -36,6 +37,11 @@ const AppRouteRoute = AppRouteRouteImport.update({
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
@@ -93,6 +99,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/onboarding': typeof OnboardingRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/app/coach': typeof AppCoachRoute
   '/app/community': typeof AppCommunityRoute
@@ -107,6 +114,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/onboarding': typeof OnboardingRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/app/coach': typeof AppCoachRoute
   '/app/community': typeof AppCommunityRoute
@@ -123,6 +131,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/app': typeof AppRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/onboarding': typeof OnboardingRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/app/coach': typeof AppCoachRoute
   '/app/community': typeof AppCommunityRoute
@@ -140,6 +149,7 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/auth'
+    | '/onboarding'
     | '/sitemap.xml'
     | '/app/coach'
     | '/app/community'
@@ -154,6 +164,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/onboarding'
     | '/sitemap.xml'
     | '/app/coach'
     | '/app/community'
@@ -169,6 +180,7 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/auth'
+    | '/onboarding'
     | '/sitemap.xml'
     | '/app/coach'
     | '/app/community'
@@ -185,6 +197,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRouteRoute: typeof AppRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  OnboardingRoute: typeof OnboardingRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
 }
 
@@ -209,6 +222,13 @@ declare module '@tanstack/react-router' {
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/sitemap.xml': {
@@ -316,6 +336,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRouteRoute: AppRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  OnboardingRoute: OnboardingRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
 }
 export const routeTree = rootRouteImport

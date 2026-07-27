@@ -12,20 +12,21 @@ type AuthMode = "signin" | "signup" | "forgot";
 function AuthPage() {
   const navigate = useNavigate();
   const [mode, setMode] = useState<AuthMode>("signin");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Clear messages when switching modes
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
   const switchMode = (newMode: AuthMode) => {
     setMode(newMode);
     setErrorMsg(null);
     setSuccessMsg(null);
   };
 
-  // Email/Password Authentication & Password Reset
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -40,12 +41,25 @@ function AuthPage() {
         if (error) throw error;
         setSuccessMsg("Password reset email sent! Check your inbox.");
       } else if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
+          options: {
+            data: {
+              first_name: firstName,
+              last_name: lastName,
+              full_name: `${firstName} ${lastName}`.trim(),
+            },
+          },
         });
         if (error) throw error;
-        setSuccessMsg("Account created! Please check your email to confirm your account.");
+
+        if (data.user) {
+          // Immediately redirect to the new Onboarding questionnaire route
+          navigate({ to: "/onboarding" });
+        } else {
+          setSuccessMsg("Account created! Please check your email to confirm.");
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email,
@@ -61,7 +75,6 @@ function AuthPage() {
     }
   };
 
-  // Google OAuth Login / Sign-up
   const handleGoogleLogin = async () => {
     setErrorMsg(null);
     setSuccessMsg(null);
@@ -69,7 +82,7 @@ function AuthPage() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/app`,
+          redirectTo: `${window.location.origin}/onboarding`,
         },
       });
       if (error) throw error;
@@ -80,13 +93,10 @@ function AuthPage() {
 
   return (
     <div className="flex min-h-[100dvh] flex-col items-center justify-between bg-background px-4 py-10 sm:py-16">
-      {/* Top Spacer for vertical balance */}
       <div className="hidden sm:block" />
 
-      {/* Main Card */}
       <div className="my-auto w-full max-w-md space-y-7 rounded-3xl border border-border bg-card p-6 shadow-sm sm:p-10">
         
-        {/* Header & Logo */}
         <div className="flex flex-col items-center text-center">
           <div className="mb-4 flex items-center justify-center gap-3">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-muted p-2 shadow-inner">
@@ -104,11 +114,7 @@ function AuthPage() {
           </div>
 
           <h2 className="mt-2 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-            {mode === "signup"
-              ? "Create an account"
-              : mode === "forgot"
-              ? "Reset password"
-              : "Welcome back"}
+            {mode === "signup" ? "Create an account" : mode === "forgot" ? "Reset password" : "Welcome back"}
           </h2>
           <p className="mt-1.5 text-xs text-muted-foreground sm:text-sm">
             {mode === "signup"
@@ -119,24 +125,59 @@ function AuthPage() {
           </p>
         </div>
 
-        {/* Error Alert */}
         {errorMsg && (
           <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-3.5 text-center text-xs font-medium text-destructive">
             {errorMsg}
           </div>
         )}
 
-        {/* Success Alert */}
         {successMsg && (
           <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3.5 text-center text-xs font-medium text-emerald-600 dark:text-emerald-400">
             {successMsg}
           </div>
         )}
 
-        {/* Email / Password Form */}
         <form onSubmit={handleSubmit} className="space-y-6">
-          
-          {/* Floating Blackboard-Style Email Input (Sits on the Top Border Line when Focused) */}
+          {mode === "signup" && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="relative">
+                <input
+                  type="text"
+                  id="firstName"
+                  required
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  placeholder=" "
+                  className="peer w-full rounded-xl border border-input bg-background px-4 py-3.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+                <label
+                  htmlFor="firstName"
+                  className="pointer-events-none absolute left-3 top-3.5 origin-left text-sm font-medium text-muted-foreground transition-all duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-top-2.5 peer-focus:left-3 peer-focus:-translate-y-0 peer-focus:bg-card peer-focus:px-1.5 peer-focus:text-xs peer-focus:font-bold peer-focus:text-primary peer-[:not(:placeholder-shown)]:-top-2.5 peer-[:not(:placeholder-shown)]:left-3 peer-[:not(:placeholder-shown)]:bg-card peer-[:not(:placeholder-shown)]:px-1.5 peer-[:not(:placeholder-shown)]:text-xs peer-[:not(:placeholder-shown)]:font-bold peer-[:not(:placeholder-shown)]:text-primary"
+                >
+                  First Name
+                </label>
+              </div>
+
+              <div className="relative">
+                <input
+                  type="text"
+                  id="lastName"
+                  required
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  placeholder=" "
+                  className="peer w-full rounded-xl border border-input bg-background px-4 py-3.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+                <label
+                  htmlFor="lastName"
+                  className="pointer-events-none absolute left-3 top-3.5 origin-left text-sm font-medium text-muted-foreground transition-all duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-top-2.5 peer-focus:left-3 peer-focus:-translate-y-0 peer-focus:bg-card peer-focus:px-1.5 peer-focus:text-xs peer-focus:font-bold peer-focus:text-primary peer-[:not(:placeholder-shown)]:-top-2.5 peer-[:not(:placeholder-shown)]:left-3 peer-[:not(:placeholder-shown)]:bg-card peer-[:not(:placeholder-shown)]:px-1.5 peer-[:not(:placeholder-shown)]:text-xs peer-[:not(:placeholder-shown)]:font-bold peer-[:not(:placeholder-shown)]:text-primary"
+                >
+                  Last Name
+                </label>
+              </div>
+            </div>
+          )}
+
           <div className="relative">
             <input
               type="email"
@@ -155,7 +196,6 @@ function AuthPage() {
             </label>
           </div>
 
-          {/* Floating Blackboard-Style Password Input */}
           {mode !== "forgot" && (
             <div className="space-y-2">
               <div className="relative">
@@ -176,7 +216,6 @@ function AuthPage() {
                 </label>
               </div>
 
-              {/* Forgot Password trigger link */}
               {mode === "signin" && (
                 <div className="flex justify-end">
                   <button
@@ -191,7 +230,6 @@ function AuthPage() {
             </div>
           )}
 
-          {/* Submit Button */}
           <button
             type="submit"
             disabled={loading}
@@ -207,7 +245,6 @@ function AuthPage() {
           </button>
         </form>
 
-        {/* Divider with Extra Breathing Space */}
         <div className="relative my-6 flex items-center justify-center">
           <div className="w-full border-t border-border" />
           <span className="absolute bg-card px-3 text-xs uppercase tracking-wider text-muted-foreground">
@@ -215,7 +252,6 @@ function AuthPage() {
           </span>
         </div>
 
-        {/* Google OAuth Button */}
         <div className="pt-1">
           <button
             type="button"
@@ -244,20 +280,8 @@ function AuthPage() {
           </button>
         </div>
 
-        {/* Bottom Switch Link */}
         <div className="pt-2 text-center text-xs text-muted-foreground sm:text-sm">
-          {mode === "forgot" ? (
-            <p>
-              Remembered your password?{" "}
-              <button
-                type="button"
-                onClick={() => switchMode("signin")}
-                className="cursor-pointer font-semibold text-primary underline-offset-4 hover:underline"
-              >
-                Sign in
-              </button>
-            </p>
-          ) : mode === "signup" ? (
+          {mode === "signup" ? (
             <p>
               Already have an account?{" "}
               <button
@@ -281,14 +305,12 @@ function AuthPage() {
             </p>
           )}
         </div>
+
       </div>
 
-      {/* Faint Footer Notice */}
       <footer className="mt-8 text-center text-[11px] text-muted-foreground/50 sm:text-xs">
         © 2026 NutriFit · Your Health is Your Best Partner
       </footer>
     </div>
   );
 }
-
-export default AuthPage;

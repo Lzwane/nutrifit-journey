@@ -1,6 +1,18 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { Clock, Flame, ChefHat, Search, Utensils } from "lucide-react";
+import {
+  Clock,
+  Flame,
+  ChefHat,
+  Search,
+  Utensils,
+  Sparkles,
+  X,
+  Plus,
+  ShoppingCart,
+  Loader2,
+  CheckCircle2,
+} from "lucide-react";
 
 export const Route = createFileRoute("/app/recipes/")({
   head: () => ({
@@ -194,9 +206,6 @@ export const POPULAR_RECIPES = [
     fiber_g: 11,
     category: "Budget Friendly",
   },
-
-  // Add these to POPULAR_RECIPES inside src/routes/app/recipes.index.tsx
-
   {
     id: "braai-chicken-drumsticks-pap",
     title: "Braaied Peri-Peri Chicken Drumsticks & Pap",
@@ -308,12 +317,30 @@ export const POPULAR_RECIPES = [
     fat_g: 12,
     fiber_g: 2,
     category: "Meal Prep",
-  }, 
+  },
 ];
+
+interface AIRecipeResult {
+  recipe_name: string;
+  description: string;
+  prep_time: string;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  instructions: string[];
+  suggested_extras_to_buy: string[];
+}
 
 function RecipesPage() {
   const [q, setQ] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
+
+  // AI Pantry Generator Modal State
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const [ingredientsInput, setIngredientsInput] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [aiRecipe, setAiRecipe] = useState<AIRecipeResult | null>(null);
 
   const categories = [
     "All",
@@ -324,6 +351,74 @@ function RecipesPage() {
     "Dinner",
     "Quick & Easy",
   ];
+
+  // Quick Preset Tags for Pantry Input
+  const COMMON_TAGS = ["Eggs", "Chicken Breast", "Pap / Mealie Meal", "Canned Tomatoes", "Spinach", "Brown Rice", "Lentils", "Potatoes", "Onions"];
+
+  const addTag = (tag: string) => {
+    if (ingredientsInput.includes(tag)) return;
+    setIngredientsInput((prev) => (prev ? `${prev}, ${tag}` : tag));
+  };
+
+  // Generate Recipe using Gemini API
+  const handleGenerateRecipe = async () => {
+    if (!ingredientsInput.trim()) return;
+
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) {
+      alert("VITE_GEMINI_API_KEY is not configured in your .env file.");
+      return;
+    }
+
+    setGenerating(true);
+    setAiRecipe(null);
+
+    try {
+      const promptText = `I have these ingredients available at home: "${ingredientsInput}".
+Create a healthy, delicious, South African style fitness recipe using these ingredients.
+Also suggest 2-3 extra optional ingredients to buy/add that would make the meal taste amazing.
+Respond ONLY with a valid raw JSON object matching strictly this structure:
+{
+  "recipe_name": "string",
+  "description": "string",
+  "prep_time": "e.g. 20 mins",
+  "calories": number,
+  "protein_g": number,
+  "carbs_g": number,
+  "fat_g": number,
+  "instructions": ["step 1", "step 2", "step 3"],
+  "suggested_extras_to_buy": ["extra ingredient 1", "extra ingredient 2"]
+}`;
+
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`;
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: promptText }] }],
+        }),
+      });
+
+      if (!response.ok) {
+        const errJson = await response.json();
+        throw new Error(errJson.error?.message || "Failed to reach Gemini API");
+      }
+
+      const resData = await response.json();
+      const rawText = resData.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+
+      const cleanJson = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
+      const parsed = JSON.parse(cleanJson);
+
+      setAiRecipe(parsed);
+    } catch (err: any) {
+      console.error("AI Recipe Generation Error:", err);
+      alert("Failed to generate recipe: " + (err.message || "Please try again."));
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const filtered = POPULAR_RECIPES.filter((r) => {
     const matchesQuery =
@@ -336,14 +431,24 @@ function RecipesPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="font-display text-3xl font-extrabold tracking-tight text-foreground">
-          South African Fitness Recipes
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Affordable, local, high-protein meals designed for everyday Mzansi cooking.
-        </p>
+      {/* Header Banner & AI Pantry Generator Callout */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-3xl border border-primary/20 bg-primary/5 p-6 shadow-sm">
+        <div className="space-y-1">
+          <h1 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
+            South African Fitness Recipes
+          </h1>
+          <p className="text-xs sm:text-sm text-muted-foreground max-w-xl">
+            Affordable, local, high-protein meals designed for everyday Mzansi cooking.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsAiModalOpen(true)}
+          className="cursor-pointer inline-flex items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3 text-xs sm:text-sm font-bold text-primary-foreground shadow-md transition hover:bg-primary/90 active:scale-[0.98] shrink-0"
+        >
+          <Sparkles className="h-4 w-4" /> AI Pantry Recipe Generator
+        </button>
       </div>
 
       {/* Search & Category Filter Bar */}
@@ -426,6 +531,147 @@ function RecipesPage() {
           </div>
         )}
       </div>
+
+      {/* AI Pantry Generator Modal */}
+      {isAiModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in overflow-y-auto">
+          <div className="w-full max-w-xl rounded-3xl border border-border bg-card p-6 shadow-2xl space-y-5 my-8 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-primary" />
+                <h3 className="font-display text-lg font-bold text-foreground">What's in Your Pantry?</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAiModalOpen(false);
+                  setAiRecipe(null);
+                }}
+                className="cursor-pointer rounded-lg p-1 text-muted-foreground hover:bg-muted"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Input Form */}
+            <div className="space-y-3">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Enter ingredients you currently have at home:
+              </label>
+
+              <textarea
+                value={ingredientsInput}
+                onChange={(e) => setIngredientsInput(e.target.value)}
+                placeholder="e.g. Eggs, spinach, canned pilchards, sweet potato, garlic..."
+                className="w-full rounded-2xl border border-input bg-background p-3.5 text-xs text-foreground outline-none focus:ring-2 focus:ring-primary min-h-[75px] resize-none"
+              />
+
+              {/* Quick Tag Pills */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="text-[10px] text-muted-foreground font-semibold uppercase mr-1">Quick Add:</span>
+                {COMMON_TAGS.map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => addTag(tag)}
+                    className="cursor-pointer rounded-lg bg-muted px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-primary/20 hover:text-primary transition"
+                  >
+                    + {tag}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleGenerateRecipe}
+                disabled={generating || !ingredientsInput.trim()}
+                className="w-full cursor-pointer flex items-center justify-center gap-2 rounded-2xl bg-primary py-3.5 text-xs font-bold text-primary-foreground shadow-md transition hover:bg-primary/90 disabled:opacity-50 mt-3"
+              >
+                {generating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" /> Chef AI is creating recipe...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4" /> Generate Recipe &amp; Macros
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* AI Generated Recipe Result */}
+            {aiRecipe && (
+              <div className="rounded-2xl border border-primary/20 bg-primary/5 p-5 space-y-4 animate-in fade-in pt-4">
+                <div className="flex items-start justify-between gap-3 border-b border-border pb-3">
+                  <div>
+                    <span className="rounded-full bg-primary/20 px-2.5 py-0.5 text-[10px] font-bold text-primary uppercase">
+                      AI Generated Recipe
+                    </span>
+                    <h4 className="font-display text-lg font-bold text-foreground mt-1">
+                      {aiRecipe.recipe_name}
+                    </h4>
+                    <p className="text-xs text-muted-foreground mt-0.5">{aiRecipe.description}</p>
+                  </div>
+                  <span className="flex items-center gap-1 text-xs font-semibold text-muted-foreground shrink-0 bg-card px-2.5 py-1 rounded-xl border border-border">
+                    <Clock className="h-3.5 w-3.5 text-primary" /> {aiRecipe.prep_time}
+                  </span>
+                </div>
+
+                {/* Macro Cards */}
+                <div className="grid grid-cols-4 gap-2 text-center">
+                  <div className="rounded-xl bg-card p-2 border border-border">
+                    <p className="text-[9px] font-bold text-muted-foreground uppercase">Calories</p>
+                    <p className="font-display text-xs font-extrabold text-orange-500">{aiRecipe.calories} cal</p>
+                  </div>
+                  <div className="rounded-xl bg-card p-2 border border-border">
+                    <p className="text-[9px] font-bold text-muted-foreground uppercase">Protein</p>
+                    <p className="font-display text-xs font-extrabold text-emerald-600 dark:text-emerald-400">{aiRecipe.protein_g}g</p>
+                  </div>
+                  <div className="rounded-xl bg-card p-2 border border-border">
+                    <p className="text-[9px] font-bold text-muted-foreground uppercase">Carbs</p>
+                    <p className="font-display text-xs font-extrabold text-foreground">{aiRecipe.carbs_g}g</p>
+                  </div>
+                  <div className="rounded-xl bg-card p-2 border border-border">
+                    <p className="text-[9px] font-bold text-muted-foreground uppercase">Fat</p>
+                    <p className="font-display text-xs font-extrabold text-foreground">{aiRecipe.fat_g}g</p>
+                  </div>
+                </div>
+
+                {/* Cooking Instructions */}
+                <div className="space-y-2">
+                  <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">How to Cook:</h5>
+                  <ol className="space-y-2 text-xs text-foreground">
+                    {aiRecipe.instructions?.map((step, idx) => (
+                      <li key={idx} className="flex items-start gap-2">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                          {idx + 1}
+                        </span>
+                        <span className="pt-0.5">{step}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+
+                {/* Shopping Extras Suggestion */}
+                {aiRecipe.suggested_extras_to_buy?.length > 0 && (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-1.5">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400">
+                      <ShoppingCart className="h-3.5 w-3.5" /> Suggested Extras to Buy / Add:
+                    </div>
+                    <ul className="flex flex-wrap gap-1.5">
+                      {aiRecipe.suggested_extras_to_buy.map((item, i) => (
+                        <li key={i} className="inline-flex items-center gap-1 rounded-md bg-card px-2 py-0.5 text-[11px] font-semibold text-foreground border border-border">
+                          <Plus className="h-3 w-3 text-emerald-500" /> {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

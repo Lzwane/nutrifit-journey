@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
 import { Camera, Sparkles, Loader2, Droplet, Bell, CheckCircle, Plus, PenTool, Check, X } from "lucide-react";
-import { GoogleGenAI } from "@google/genai";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 
@@ -10,13 +9,10 @@ export const Route = createFileRoute("/app/nutrition")({
   component: NutritionPage,
 });
 
-// Initialize Gemini SDK
-const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || "" });
-
 function NutritionPage() {
   const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   // State variables
   const [analyzing, setAnalyzing] = useState(false);
   const [waterAmount, setWaterAmount] = useState(0);
@@ -37,7 +33,7 @@ function NutritionPage() {
   // Fetch logged water from Supabase on load
   useEffect(() => {
     if (!user) return;
-    
+
     // Fetch today's total water
     supabase
       .from("water_logs")
@@ -125,47 +121,84 @@ function NutritionPage() {
     }
   };
 
-  // Convert File to Base64 for Gemini
-  const fileToGenerativePart = async (file: File) => {
-    const base64EncodedDataPromise = new Promise<string>((resolve) => {
+  // Convert File to Base64
+  const fileToBase64 = (file: File): Promise<{ base64: string; mimeType: string }> => {
+    return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onloadend = () => resolve((reader.result as string).split(",")[1]);
+      reader.onload = () => {
+        const result = reader.result as string;
+        const base64 = result.split(",")[1];
+        resolve({ base64, mimeType: file.type });
+      };
+      reader.onerror = (error) => reject(error);
       reader.readAsDataURL(file);
     });
-    return {
-      inlineData: { data: await base64EncodedDataPromise, mimeType: file.type },
-    };
   };
 
-  // Handle AI Vision Scan
+  // Handle AI Vision Scan via Direct Gemini REST Endpoint
   const handleFoodScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
 
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) {
+      alert("VITE_GEMINI_API_KEY is missing in your .env file.");
+      return;
+    }
+
     setAnalyzing(true);
 
     try {
-      const imagePart = await fileToGenerativePart(file);
+      const { base64, mimeType } = await fileToBase64(file);
 
-      const prompt = `Analyze this food image. Estimate nutritional values and respond ONLY with a raw JSON object formatted strictly as:
+      const promptText = `Analyze this food image. Estimate nutritional values and respond ONLY with a raw JSON object formatted strictly as:
 {"food_name": "string", "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number}`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: [imagePart, prompt],
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`;
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  inline_data: {
+                    mime_type: mimeType,
+                    data: base64,
+                  },
+                },
+                { text: promptText },
+              ],
+            },
+          ],
+        }),
       });
 
-      const responseText = response.text || "{}";
-      const cleanJsonStr = responseText.replace(/```json|```/g, "").trim();
+      if (!response.ok) {
+        const errJson = await response.json();
+        throw new Error(errJson.error?.message || "Failed to reach Gemini API");
+      }
+
+      const resData = await response.json();
+      const rawText = resData.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+
+      // Clean markdown fencing around JSON if present
+      const cleanJsonStr = rawText
+        .replace(/```json/gi, "")
+        .replace(/```/g, "")
+        .trim();
+
       const nutritionData = JSON.parse(cleanJsonStr);
 
       const { error } = await supabase.from("food_logs").insert({
         user_id: user.id,
         meal_name: nutritionData.food_name || "Scanned Meal",
-        calories: nutritionData.calories || 0,
-        protein_g: nutritionData.protein_g || 0,
-        carbs_g: nutritionData.carbs_g || 0,
-        fat_g: nutritionData.fat_g || 0,
+        calories: Math.round(nutritionData.calories || 0),
+        protein_g: Math.round(nutritionData.protein_g || 0),
+        carbs_g: Math.round(nutritionData.carbs_g || 0),
+        fat_g: Math.round(nutritionData.fat_g || 0),
         log_date: today,
       } as any);
 
@@ -173,10 +206,11 @@ function NutritionPage() {
 
       showToast(`AI Logged: ${nutritionData.food_name || "Meal"} (${nutritionData.calories || 0} kcal)! ✨`);
     } catch (err: any) {
-      console.error(err);
-      alert("Failed to analyze food. Ensure VITE_GEMINI_API_KEY is configured.");
+      console.error("Food scan error:", err);
+      alert("Failed to analyze food: " + (err.message || "Invalid image or key error"));
     } finally {
       setAnalyzing(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -186,7 +220,7 @@ function NutritionPage() {
       {/* Quick Pop-up Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-2xl bg-foreground px-4 py-3 text-sm font-semibold text-background shadow-lg animate-in fade-in slide-in-from-bottom-4">
-          <Check className="h-4 w-4 text-emerald-400" />
+          <Check className="h-4 w-4 text-emerald-400"/>
           <span>{toastMessage}</span>
         </div>
       )}
@@ -214,11 +248,11 @@ function NutritionPage() {
         <div className="rounded-3xl border border-primary/20 bg-primary/5 p-6 text-center shadow-sm flex flex-col items-center justify-between">
           <div>
             <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-              <Camera className="h-6 w-6" />
+              <Camera className="h-6 w-6"/>
             </div>
             <h2 className="font-display text-lg font-bold text-foreground">AI Food Camera</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Snap a meal photo for automatic calorie & macro detection.
+              Snap a meal photo for automatic calorie &amp; macro detection.
             </p>
           </div>
 
@@ -230,11 +264,11 @@ function NutritionPage() {
           >
             {analyzing ? (
               <>
-                <Loader2 className="h-5 w-5 animate-spin" /> Analyzing Photo...
+                <Loader2 className="h-5 w-5 animate-spin"/> Analyzing Photo...
               </>
             ) : (
               <>
-                Snap Meal Photo <Sparkles className="h-4 w-4" />
+                Snap Meal Photo <Sparkles className="h-4 w-4"/>
               </>
             )}
           </button>
@@ -244,7 +278,7 @@ function NutritionPage() {
         <div className="rounded-3xl border border-border bg-card p-6 text-center shadow-sm flex flex-col items-center justify-between">
           <div>
             <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted text-foreground">
-              <PenTool className="h-6 w-6" />
+              <PenTool className="h-6 w-6"/>
             </div>
             <h2 className="font-display text-lg font-bold text-foreground">Manual Food Entry</h2>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -257,7 +291,7 @@ function NutritionPage() {
             onClick={() => setIsManualOpen(true)}
             className="mt-5 w-full cursor-pointer flex items-center justify-center gap-2 rounded-xl border border-input bg-background py-3.5 text-sm font-semibold text-foreground transition hover:bg-accent"
           >
-            Enter Food Details <Plus className="h-4 w-4" />
+            Enter Food Details <Plus className="h-4 w-4"/>
           </button>
         </div>
       </div>
@@ -272,7 +306,7 @@ function NutritionPage() {
                 onClick={() => setIsManualOpen(false)}
                 className="cursor-pointer rounded-lg p-1 text-muted-foreground hover:bg-muted"
               >
-                <X className="h-5 w-5" />
+                <X className="h-5 w-5"/>
               </button>
             </div>
 
@@ -349,7 +383,7 @@ function NutritionPage() {
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-500">
-              <Droplet className="h-5 w-5" />
+              <Droplet className="h-5 w-5"/>
             </div>
             <div>
               <h3 className="font-display text-base font-bold text-foreground">Water Hydration</h3>
@@ -360,7 +394,7 @@ function NutritionPage() {
           {/* Water Notification Toggle */}
           {notificationsEnabled ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-              <CheckCircle className="h-4 w-4" /> Water Reminders On
+              <CheckCircle className="h-4 w-4"/> Water Reminders On
             </span>
           ) : (
             <button
@@ -368,7 +402,7 @@ function NutritionPage() {
               onClick={enableWaterReminders}
               className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-input bg-background px-3.5 py-2 text-xs font-semibold text-foreground transition hover:bg-accent"
             >
-              <Bell className="h-4 w-4 text-primary" /> Enable Drink Water Reminders
+              <Bell className="h-4 w-4 text-primary"/> Enable Drink Water Reminders
             </button>
           )}
         </div>
@@ -380,21 +414,21 @@ function NutritionPage() {
             onClick={() => logWater(250)}
             className="flex cursor-pointer items-center justify-center gap-1 rounded-xl border border-blue-500/20 bg-blue-500/5 py-3 text-xs font-bold text-blue-600 transition hover:bg-blue-500/10 active:scale-95 dark:text-blue-400"
           >
-            <Plus className="h-3.5 w-3.5" /> 250 ml
+            <Plus className="h-3.5 w-3.5"/> 250 ml
           </button>
           <button
             type="button"
             onClick={() => logWater(500)}
             className="flex cursor-pointer items-center justify-center gap-1 rounded-xl border border-blue-500/20 bg-blue-500/5 py-3 text-xs font-bold text-blue-600 transition hover:bg-blue-500/10 active:scale-95 dark:text-blue-400"
           >
-            <Plus className="h-3.5 w-3.5" /> 500 ml
+            <Plus className="h-3.5 w-3.5"/> 500 ml
           </button>
           <button
             type="button"
             onClick={() => logWater(750)}
             className="flex cursor-pointer items-center justify-center gap-1 rounded-xl border border-blue-500/20 bg-blue-500/5 py-3 text-xs font-bold text-blue-600 transition hover:bg-blue-500/10 active:scale-95 dark:text-blue-400"
           >
-            <Plus className="h-3.5 w-3.5" /> 750 ml
+            <Plus className="h-3.5 w-3.5"/> 750 ml
           </button>
         </div>
       </div>

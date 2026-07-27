@@ -15,6 +15,21 @@ import appCss from "../styles.css?url";
 import nutrifitLogo from "@/assets/Nutrifit logo.jpeg";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
+// Inline theme script injected directly into <head> to prevent light-mode flash
+const themeScript = `
+  (function() {
+    try {
+      var savedTheme = localStorage.getItem('nutrifit-theme');
+      var isDark = savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      if (isDark) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    } catch (e) {}
+  })();
+`;
+
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
     meta: [
@@ -38,6 +53,8 @@ function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <head>
+        {/* Instant Dark Mode Initialization */}
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <HeadContent />
       </head>
       <body>
@@ -54,27 +71,45 @@ function RootComponent() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [checkingAuth, setCheckingAuth] = useState(true);
 
+  // Sync theme on route changes / React hydration
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("nutrifit-theme");
+    const root = document.documentElement;
+
+    if (
+      savedTheme === "dark" ||
+      (!savedTheme && window.matchMedia("(prefers-color-scheme: dark)").matches)
+    ) {
+      root.classList.add("dark");
+    } else {
+      root.classList.remove("dark");
+    }
+  }, []);
+
   useEffect(() => {
     // 1. Check initial session when app opens
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        // User is logged in -> redirect to dashboard if on landing or auth
+        // Redirect logged-in user to dashboard IF they are on landing or auth (allow /onboarding and /app)
         if (pathname === "/" || pathname === "/auth") {
           navigate({ to: "/app" });
         }
       } else {
-        // User is NOT logged in -> redirect to auth if trying to access protected pages
-        if (pathname === "/" || pathname.startsWith("/app")) {
+        // Redirect unauthenticated user to /auth if trying to access protected routes
+        if (pathname === "/" || pathname.startsWith("/app") || pathname === "/onboarding") {
           navigate({ to: "/auth" });
         }
       }
       setCheckingAuth(false);
     });
 
-    // 2. Listen for auth changes (sign in, sign out)
+    // 2. Listen for auth state changes (sign in, sign out)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "SIGNED_IN" && session) {
-        navigate({ to: "/app" });
+        // Only auto-redirect to /app if NOT currently completing onboarding
+        if (window.location.pathname !== "/onboarding") {
+          navigate({ to: "/app" });
+        }
       } else if (event === "SIGNED_OUT") {
         navigate({ to: "/auth" });
       }
