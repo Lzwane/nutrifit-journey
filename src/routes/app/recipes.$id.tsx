@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, Clock, Flame, Users, Plus, ChefHat, Check } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
-import { POPULAR_RECIPES } from "./recipes.index";
+import { POPULAR_RECIPES } from "@/data/recipes";
 
 export const Route = createFileRoute("/app/recipes/$id")({
   head: () => ({

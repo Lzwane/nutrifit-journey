@@ -10,10 +10,12 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminRouteRouteImport } from './routes/admin/route'
 import { Route as AppRouteRouteImport } from './routes/app/route'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppCoachRouteImport } from './routes/app/coach'
 import { Route as AppCommunityRouteImport } from './routes/app/community'
@@ -27,6 +29,11 @@ import { Route as AppWorkoutsIdRouteImport } from './routes/app/workouts.$id'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRouteRoute = AdminRouteRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppRouteRoute = AppRouteRouteImport.update({
@@ -48,6 +55,11 @@ const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   id: '/sitemap.xml',
   path: '/sitemap.xml',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminRouteRoute,
 } as any)
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
@@ -97,6 +109,7 @@ const AppWorkoutsIdRoute = AppWorkoutsIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRouteRouteWithChildren
   '/app': typeof AppRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/onboarding': typeof OnboardingRoute
@@ -105,6 +118,7 @@ export interface FileRoutesByFullPath {
   '/app/community': typeof AppCommunityRoute
   '/app/nutrition': typeof AppNutritionRoute
   '/app/profile': typeof AppProfileRoute
+  '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
   '/app/recipes/$id': typeof AppRecipesIdRoute
   '/app/workouts/$id': typeof AppWorkoutsIdRoute
@@ -120,6 +134,7 @@ export interface FileRoutesByTo {
   '/app/community': typeof AppCommunityRoute
   '/app/nutrition': typeof AppNutritionRoute
   '/app/profile': typeof AppProfileRoute
+  '/admin': typeof AdminIndexRoute
   '/app': typeof AppIndexRoute
   '/app/recipes/$id': typeof AppRecipesIdRoute
   '/app/workouts/$id': typeof AppWorkoutsIdRoute
@@ -129,6 +144,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin': typeof AdminRouteRouteWithChildren
   '/app': typeof AppRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/onboarding': typeof OnboardingRoute
@@ -137,6 +153,7 @@ export interface FileRoutesById {
   '/app/community': typeof AppCommunityRoute
   '/app/nutrition': typeof AppNutritionRoute
   '/app/profile': typeof AppProfileRoute
+  '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
   '/app/recipes/$id': typeof AppRecipesIdRoute
   '/app/workouts/$id': typeof AppWorkoutsIdRoute
@@ -147,6 +164,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/admin'
     | '/app'
     | '/auth'
     | '/onboarding'
@@ -155,6 +173,7 @@ export interface FileRouteTypes {
     | '/app/community'
     | '/app/nutrition'
     | '/app/profile'
+    | '/admin/'
     | '/app/'
     | '/app/recipes/$id'
     | '/app/workouts/$id'
@@ -170,6 +189,7 @@ export interface FileRouteTypes {
     | '/app/community'
     | '/app/nutrition'
     | '/app/profile'
+    | '/admin'
     | '/app'
     | '/app/recipes/$id'
     | '/app/workouts/$id'
@@ -178,6 +198,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/admin'
     | '/app'
     | '/auth'
     | '/onboarding'
@@ -186,6 +207,7 @@ export interface FileRouteTypes {
     | '/app/community'
     | '/app/nutrition'
     | '/app/profile'
+    | '/admin/'
     | '/app/'
     | '/app/recipes/$id'
     | '/app/workouts/$id'
@@ -195,6 +217,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminRouteRoute: typeof AdminRouteRouteWithChildren
   AppRouteRoute: typeof AppRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   OnboardingRoute: typeof OnboardingRoute
@@ -208,6 +231,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app': {
@@ -237,6 +267,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/sitemap.xml'
       preLoaderRoute: typeof SitemapDotxmlRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/admin/': {
+      id: '/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     '/app/': {
       id: '/app/'
@@ -304,6 +341,18 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AdminRouteRouteChildren {
+  AdminIndexRoute: typeof AdminIndexRoute
+}
+
+const AdminRouteRouteChildren: AdminRouteRouteChildren = {
+  AdminIndexRoute: AdminIndexRoute,
+}
+
+const AdminRouteRouteWithChildren = AdminRouteRoute._addFileChildren(
+  AdminRouteRouteChildren,
+)
+
 interface AppRouteRouteChildren {
   AppCoachRoute: typeof AppCoachRoute
   AppCommunityRoute: typeof AppCommunityRoute
@@ -334,6 +383,7 @@ const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminRouteRoute: AdminRouteRouteWithChildren,
   AppRouteRoute: AppRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   OnboardingRoute: OnboardingRoute,

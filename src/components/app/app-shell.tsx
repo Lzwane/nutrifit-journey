@@ -1,115 +1,158 @@
-import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import { Home, Dumbbell, Apple, ChefHat, Users, Sparkles, User as UserIcon, LogOut } from "lucide-react";
-import type { ReactNode } from "react";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { 
+  Home, 
+  Utensils, 
+  Dumbbell, 
+  Users, 
+  Bot, 
+  User,
+  ChefHat,
+  LogOut
+} from "lucide-react";
+import { NutriFitLogo } from "@/components/app/logo";
+import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
-import { NutriFitWordmark, NutriFitLogo } from "./logo";
 
-const nav: Array<{ to: string; label: string; icon: typeof Home; exact?: boolean }> = [
-  { to: "/app", label: "Home", icon: Home, exact: true },
-  { to: "/app/workouts", label: "Workouts", icon: Dumbbell },
-  { to: "/app/nutrition", label: "Nutrition", icon: Apple },
-  { to: "/app/recipes", label: "Recipes", icon: ChefHat },
-  { to: "/app/community", label: "Community", icon: Users },
-  { to: "/app/coach", label: "AI Coach", icon: Sparkles },
-  { to: "/app/profile", label: "Profile", icon: UserIcon },
-];
-
-export function AppShell({ children }: { children: ReactNode }) {
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
+export function AppShell({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
-    navigate({ to: "/" });
+  const navItems = [
+    { label: "Home", href: "/app", icon: Home, exact: true },
+    { label: "Recipes", href: "/app/recipes", icon: ChefHat },
+    { label: "Nutrition", href: "/app/nutrition", icon: Utensils },
+    { label: "Workouts", href: "/app/workouts", icon: Dumbbell },
+    { label: "AI Coach", href: "/app/coach", icon: Bot },
+    { label: "Community", href: "/app/community", icon: Users },
+    { label: "Profile", href: "/app/profile", icon: User },
+  ];
+
+  const isActive = (href: string, exact?: boolean) => {
+    if (exact) return location.pathname === href || location.pathname === "/app/";
+    return location.pathname.startsWith(href);
   };
 
-  const isActive = (to: string, exact?: boolean) =>
-    exact ? pathname === to : pathname === to || pathname.startsWith(to + "/");
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate({ to: "/auth" });
+  };
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-border bg-card lg:flex lg:flex-col">
-        <div className="p-5">
-          <Link to="/app">
-            <NutriFitWordmark />
+    <div className="flex min-h-screen bg-background text-foreground font-sans">
+      {/* ================= DESKTOP & TABLET SIDEBAR ================= */}
+      <aside className="hidden md:flex w-60 lg:w-64 border-r border-border bg-card p-4 lg:p-6 flex-col justify-between shrink-0 fixed inset-y-0 left-0 z-30">
+        <div className="space-y-6 lg:space-y-8">
+          {/* LOGO */}
+          <Link to="/app" className="flex items-center gap-3 group">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted p-1.5 shadow-inner transition group-hover:scale-105">
+              <NutriFitLogo className="h-full w-full object-contain" />
+            </div>
+            <div className="flex flex-col leading-tight">
+              <span className="font-display text-lg font-extrabold tracking-tight">
+                <span style={{ color: "var(--brand-green)" }}>Nutri</span>
+                <span style={{ color: "var(--brand-orange)" }}>Fit</span>
+              </span>
+              <span className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground">
+                Fitness &amp; Health
+              </span>
+            </div>
           </Link>
+
+          {/* NAVIGATION LINKS */}
+          <nav className="space-y-1">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const active = isActive(item.href, item.exact);
+              return (
+                <Link
+                  key={item.href}
+                  to={item.href}
+                  className={`flex items-center space-x-3 px-3.5 py-2.5 lg:px-4 lg:py-3 rounded-xl text-xs font-bold transition ${
+                    active
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{item.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
         </div>
-        <nav className="flex-1 space-y-1 px-3">
-          {nav.map((n) => {
-            const Icon = n.icon;
-            const active = isActive(n.to, n.exact);
-            return (
-              <Link
-                key={n.to}
-                to={n.to}
-                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                  active
-                    ? "bg-brand-green-soft text-primary"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                {n.label}
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="p-3">
-          <button
-            onClick={signOut}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
-          >
-            <LogOut className="h-4 w-4" /> Sign out
-          </button>
-          <p className="mt-3 px-3 text-[10px] text-muted-foreground">
-            Your Health is Your Best Partner
-          </p>
-        </div>
+
+        {/* USER BRIEF FOOTER & SIGN OUT */}
+        {user && (
+          <div className="pt-4 border-t border-border space-y-3">
+            <div className="flex items-center gap-3 overflow-hidden">
+              <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
+                {user.email?.[0].toUpperCase() || "U"}
+              </div>
+              <div className="truncate text-xs">
+                <p className="font-semibold truncate text-foreground">
+                  {user.user_metadata?.full_name || user.email?.split("@")[0]}
+                </p>
+                <p className="text-[10px] text-muted-foreground truncate">{user.email}</p>
+              </div>
+            </div>
+
+            {/* DESKTOP SIGN OUT BUTTON */}
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-destructive hover:bg-destructive/10 transition cursor-pointer"
+            >
+              <LogOut className="h-4 w-4" />
+              <span>Sign Out</span>
+            </button>
+          </div>
+        )}
       </aside>
 
-      {/* Mobile top bar */}
-      <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-border bg-card/80 px-4 backdrop-blur lg:hidden">
-        <Link to="/app">
-          <NutriFitLogo className="h-8 w-8" />
-        </Link>
-        <button
-          onClick={signOut}
-          className="rounded-lg p-2 text-muted-foreground hover:bg-muted"
-          aria-label="Sign out"
-        >
-          <LogOut className="h-4 w-4" />
-        </button>
-      </header>
-
-      {/* Main content */}
-      <main className="pb-24 lg:pb-8 lg:pl-64">
-        <div className="mx-auto max-w-5xl px-4 py-6 lg:px-8">{children}</div>
+      {/* ================= MAIN CONTENT AREA ================= */}
+      <main className="flex-1 md:pl-60 lg:pl-64 pb-20 md:pb-8 w-full min-h-screen">
+        <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+          {children}
+        </div>
       </main>
 
-      {/* Mobile bottom navigation */}
-      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/95 backdrop-blur lg:hidden">
-        <div className="grid grid-cols-7">
-          {nav.map((n) => {
-            const Icon = n.icon;
-            const active = isActive(n.to, n.exact);
-            return (
-              <Link
-                key={n.to}
-                to={n.to}
-                className={`flex flex-col items-center gap-1 py-2 text-[10px] font-medium ${
-                  active ? "text-primary" : "text-muted-foreground"
-                }`}
-              >
-                <Icon className="h-5 w-5" />
-                <span className="truncate">{n.label.split(" ")[0]}</span>
-              </Link>
-            );
-          })}
-        </div>
+      {/* ================= MOBILE BOTTOM NAVIGATION (SINGLE LINE) ================= */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-md border-t border-border px-1 py-1.5 flex items-center justify-around shadow-lg">
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          const active = isActive(item.href, item.exact);
+          return (
+            <Link
+              key={item.href}
+              to={item.href}
+              className={`flex flex-1 flex-col items-center justify-center py-1 px-0.5 rounded-xl transition cursor-pointer min-w-0 ${
+                active
+                  ? "text-primary font-bold scale-105"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Icon className={`h-4 w-4 sm:h-5 sm:w-5 ${active ? "text-primary" : ""}`} />
+              <span className="text-[8.5px] sm:text-[10px] truncate max-w-full mt-0.5 leading-tight">
+                {item.label}
+              </span>
+            </Link>
+          );
+        })}
+
+        {/* MOBILE SIGN OUT BUTTON */}
+        <button
+          type="button"
+          onClick={handleSignOut}
+          className="flex flex-1 flex-col items-center justify-center py-1 px-0.5 rounded-xl transition cursor-pointer min-w-0 text-destructive hover:text-destructive/80"
+          title="Sign Out"
+        >
+          <LogOut className="h-4 w-4 sm:h-5 sm:w-5" />
+          <span className="text-[8.5px] sm:text-[10px] truncate max-w-full mt-0.5 leading-tight">
+            Exit
+          </span>
+        </button>
       </nav>
     </div>
   );
 }
-
-export default AppShell;
