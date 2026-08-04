@@ -3,6 +3,8 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { NutriFitLogo } from "@/components/app/logo";
 
+const ADMIN_EMAIL = "admin@nutrifit.co.za";
+
 export const Route = createFileRoute("/auth")({
   component: AuthPage,
 });
@@ -33,16 +35,25 @@ function AuthPage() {
     setErrorMsg(null);
     setSuccessMsg(null);
 
+    const cleanEmail = email.trim().toLowerCase();
+
     try {
       if (mode === "forgot") {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
           redirectTo: `${window.location.origin}/auth?reset=true`,
         });
         if (error) throw error;
         setSuccessMsg("Password reset email sent! Check your inbox.");
       } else if (mode === "signup") {
+        // Prevent registering as the reserved admin email via standard signup
+        if (cleanEmail === ADMIN_EMAIL) {
+          setErrorMsg("This email is reserved for system administration. Please sign in instead.");
+          setLoading(false);
+          return;
+        }
+
         const { data, error } = await supabase.auth.signUp({
-          email,
+          email: cleanEmail,
           password,
           options: {
             data: {
@@ -55,18 +66,28 @@ function AuthPage() {
         if (error) throw error;
 
         if (data.user) {
-          // Immediately redirect to the new Onboarding questionnaire route
           navigate({ to: "/onboarding" });
         } else {
           setSuccessMsg("Account created! Please check your email to confirm.");
         }
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
+        // Standard & Admin Sign In
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
           password,
         });
+
         if (error) throw error;
-        navigate({ to: "/app" });
+
+        const isEmailAdmin = data.user?.email?.toLowerCase().trim() === ADMIN_EMAIL;
+        const isRoleAdmin = data.user?.app_metadata?.role === "admin";
+
+        // Redirect Admin directly to /admin, normal users to /app
+        if (data.user && (isEmailAdmin || isRoleAdmin)) {
+          navigate({ to: "/admin" });
+        } else {
+          navigate({ to: "/app" });
+        }
       }
     } catch (err: any) {
       setErrorMsg(err.message || "An error occurred during authentication.");
@@ -96,7 +117,6 @@ function AuthPage() {
       <div className="hidden sm:block" />
 
       <div className="my-auto w-full max-w-md space-y-7 rounded-3xl border border-border bg-card p-6 shadow-sm sm:p-10">
-        
         <div className="flex flex-col items-center text-center">
           <div className="mb-4 flex items-center justify-center gap-3">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-muted p-2 shadow-inner">
@@ -305,7 +325,6 @@ function AuthPage() {
             </p>
           )}
         </div>
-
       </div>
 
       <footer className="mt-8 text-center text-[11px] text-muted-foreground/50 sm:text-xs">
@@ -314,3 +333,5 @@ function AuthPage() {
     </div>
   );
 }
+
+export default AuthPage;
