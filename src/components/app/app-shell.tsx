@@ -23,7 +23,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     { label: "Recipes", href: "/app/recipes", icon: ChefHat },
     { label: "Nutrition", href: "/app/nutrition", icon: Utensils },
     { label: "Workouts", href: "/app/workouts", icon: Dumbbell },
-    { label: "AI Coach", href: "/app/coach", icon: Bot },
+    { label: "NutriGuide AI", href: "/app/coach", icon: Bot },
     { label: "Community", href: "/app/community", icon: Users },
     { label: "Profile", href: "/app/profile", icon: User },
   ];
@@ -111,8 +111,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* ================= MAIN CONTENT AREA ================= */}
-      <main className="flex-1 md:pl-60 lg:pl-64 pb-20 md:pb-8 w-full min-h-screen">
-        <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+      <main className="flex-1 md:pl-60 lg:pl-64 pb-20 md:pb-8 w-full min-h-screen flex flex-col">
+        <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 w-full flex-1 flex flex-col">
           {children}
         </div>
       </main>
@@ -133,7 +133,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               }`}
             >
               <Icon className={`h-4 w-4 sm:h-5 sm:w-5 ${active ? "text-primary" : ""}`} />
-              <span className="text-[8.5px] sm:text-[10px] truncate max-w-full mt-0.5 leading-tight">
+              <span className="text-[8px] sm:text-[9.5px] truncate max-w-full mt-0.5 leading-tight">
                 {item.label}
               </span>
             </Link>
@@ -148,8 +148,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           title="Sign Out"
         >
           <LogOut className="h-4 w-4 sm:h-5 sm:w-5" />
-          <span className="text-[8.5px] sm:text-[10px] truncate max-w-full mt-0.5 leading-tight">
-            Exit
+          <span className="text-[8px] sm:text-[9.5px] truncate max-w-full mt-0.5 leading-tight">
+            Sign Out
           </span>
         </button>
       </nav>
