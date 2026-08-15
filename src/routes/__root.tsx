@@ -12,9 +12,8 @@ import { supabase } from "@/integrations/supabase/client";
 
 import appCss from "../styles.css?url";
 import nutrifitLogo from "@/assets/Nutrifit logo.jpeg";
-import { PWAInstallModal } from "@/components/pwa-install-modal";
+import { BetwayInstallBanner } from "@/components/betway-install-banner";
 
-// Inline theme script injected directly into <head> to prevent light-mode flash
 const themeScript = `
   (function() {
     try {
@@ -74,7 +73,6 @@ function RootComponent() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [checkingAuth, setCheckingAuth] = useState(true);
 
-  // Sync theme
   useEffect(() => {
     const savedTheme = localStorage.getItem("nutrifit-theme");
     const root = document.documentElement;
@@ -90,7 +88,6 @@ function RootComponent() {
   }, []);
 
   useEffect(() => {
-    // 1. Check initial session when app first loads
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         if (pathname === "/" || pathname === "/auth") {
@@ -104,7 +101,6 @@ function RootComponent() {
       setCheckingAuth(false);
     });
 
-    // 2. Auth change listener
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
@@ -131,9 +127,9 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      {/* BETWAY-STYLE DIRECT APP DOWNLOAD BANNER */}
+      <BetwayInstallBanner />
       <Outlet />
-      {/* PROMINENT PWA INSTALL PROMPT POP-UP */}
-      <PWAInstallModal />
     </QueryClientProvider>
   );
 }
