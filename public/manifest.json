@@ -1,0 +1,24 @@
+{
+  "short_name": "NutriFit",
+  "name": "NutriFit — Fitness & Health",
+  "description": "Your all-in-one health, nutrition, workout, and AI fitness companion.",
+  "icons": [
+    {
+      "src": "/Nutrifit logo.jpeg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/Nutrifit logo.jpeg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/app",
+  "background_color": "#0d1117",
+  "theme_color": "#10b981",
+  "display": "standalone",
+  "orientation": "portrait"
+}

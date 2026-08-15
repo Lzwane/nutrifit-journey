@@ -17,6 +17,7 @@ import {
   X,
   Shield,
   Info,
+  Sparkles,
 } from "lucide-react";
 
 export const Route = createFileRoute("/app/community")({
@@ -460,13 +461,18 @@ export function CommunityPage() {
         /* 2. COMMUNITY MAIN SCREEN: TABS & GROUP DISCOVERY */
         <div className="flex-1 flex flex-col space-y-5">
           
-          {/* TOP HEADER WITH BELL UNREAD NOTIFICATION */}
+          {/* TOP HEADER WITH LIFETIME FREE BADGE & BELL NOTIFICATION */}
           <div className="flex items-center justify-between pb-2 border-b border-border/60">
-            <h1 className="font-display text-lg sm:text-2xl font-extrabold text-foreground tracking-tight">
-              Communities
-            </h1>
+            <div className="flex items-center gap-2.5">
+              <h1 className="font-display text-lg sm:text-2xl font-extrabold text-foreground tracking-tight">
+                Communities
+              </h1>
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 className="h-3 w-3" /> Free Feature
+              </span>
+            </div>
 
-            {/* BELL WITH RED UNREAD BADGE */}
+            {/* BELL WITH UNREAD BADGE */}
             <div className="relative cursor-pointer" onClick={() => setUnreadCount(0)}>
               <div className="p-2 rounded-2xl bg-card border border-border shadow-xs text-muted-foreground hover:text-foreground transition">
                 <Bell className="h-5 w-5" />

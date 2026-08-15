@@ -1,11 +1,28 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
-import { Camera, Sparkles, Loader2, Droplet, Bell, CheckCircle, Plus, PenTool, Check, X } from "lucide-react";
+import {
+  Camera,
+  Sparkles,
+  Loader2,
+  Droplet,
+  Bell,
+  CheckCircle2,
+  Plus,
+  PenTool,
+  Check,
+  X,
+  Flame,
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/app/nutrition")({
-  head: () => ({ meta: [{ title: "Nutrition — NutriFit" }] }),
+  head: () => ({
+    meta: [
+      { title: "Nutrition & Water Tracker — NutriFit" },
+      { name: "description", content: "Log meals using AI or manual entry, and track daily hydration." },
+    ],
+  }),
   component: NutritionPage,
 });
 
@@ -91,13 +108,13 @@ function NutritionPage() {
   // Handle Manual Food Log Submission
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !mealName) return;
+    if (!user || !mealName.trim()) return;
 
     setSavingMeal(true);
     try {
       const { error } = await supabase.from("food_logs").insert({
         user_id: user.id,
-        meal_name: mealName,
+        meal_name: mealName.trim(),
         calories: parseInt(calories) || 0,
         protein_g: parseFloat(protein) || 0,
         carbs_g: parseFloat(carbs) || 0,
@@ -215,21 +232,30 @@ function NutritionPage() {
   };
 
   return (
-    <div className="space-y-6 relative">
-      
+    <div className="space-y-6 relative max-w-7xl mx-auto font-sans pb-12">
       {/* Quick Pop-up Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-2xl bg-foreground px-4 py-3 text-sm font-semibold text-background shadow-lg animate-in fade-in slide-in-from-bottom-4">
-          <Check className="h-4 w-4 text-emerald-400"/>
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-2xl bg-foreground px-4 py-3 text-xs sm:text-sm font-semibold text-background shadow-lg animate-in fade-in slide-in-from-bottom-4">
+          <Check className="h-4 w-4 text-emerald-400" />
           <span>{toastMessage}</span>
         </div>
       )}
 
-      <div className="flex flex-col gap-1">
-        <h1 className="font-display text-3xl font-extrabold tracking-tight">Nutrition Tracker</h1>
-        <p className="text-sm text-muted-foreground">
-          Log meals using AI, enter entries manually, or track your water intake.
-        </p>
+      {/* HEADER WITH LIFETIME FREE BADGE */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-border/60">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <h1 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
+              Nutrition &amp; Water
+            </h1>
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="h-3 w-3" /> Free Feature
+            </span>
+          </div>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+            Log meals using AI or manual entry, and track your daily hydration goals.
+          </p>
+        </div>
       </div>
 
       {/* Hidden File Input for AI Camera Snap */}
@@ -245,14 +271,14 @@ function NutritionPage() {
       {/* Action Buttons: AI Scan & Manual Entry */}
       <div className="grid gap-4 md:grid-cols-2">
         {/* AI Camera Card */}
-        <div className="rounded-3xl border border-primary/20 bg-primary/5 p-6 text-center shadow-sm flex flex-col items-center justify-between">
+        <div className="rounded-3xl border border-primary/20 bg-primary/5 p-6 text-center shadow-xs flex flex-col items-center justify-between">
           <div>
-            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-              <Camera className="h-6 w-6"/>
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-xs">
+              <Camera className="h-6 w-6" />
             </div>
             <h2 className="font-display text-lg font-bold text-foreground">AI Food Camera</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Snap a meal photo for automatic calorie &amp; macro detection.
+            <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+              Snap a meal photo for automatic calorie &amp; macro breakdown detection.
             </p>
           </div>
 
@@ -260,149 +286,69 @@ function NutritionPage() {
             type="button"
             disabled={analyzing}
             onClick={() => fileInputRef.current?.click()}
-            className="mt-5 w-full cursor-pointer flex items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 disabled:opacity-50"
+            className="mt-5 w-full cursor-pointer flex items-center justify-center gap-2 rounded-2xl bg-primary py-3.5 text-xs sm:text-sm font-bold text-primary-foreground shadow-xs transition hover:bg-primary/90 disabled:opacity-50"
           >
             {analyzing ? (
               <>
-                <Loader2 className="h-5 w-5 animate-spin"/> Analyzing Photo...
+                <Loader2 className="h-4 w-4 animate-spin" /> Analyzing Photo with AI...
               </>
             ) : (
               <>
-                Snap Meal Photo <Sparkles className="h-4 w-4"/>
+                Snap Meal Photo <Sparkles className="h-4 w-4" />
               </>
             )}
           </button>
         </div>
 
         {/* Manual Log Card */}
-        <div className="rounded-3xl border border-border bg-card p-6 text-center shadow-sm flex flex-col items-center justify-between">
+        <div className="rounded-3xl border border-border bg-card p-6 text-center shadow-xs flex flex-col items-center justify-between">
           <div>
             <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted text-foreground">
-              <PenTool className="h-6 w-6"/>
+              <PenTool className="h-6 w-6" />
             </div>
             <h2 className="font-display text-lg font-bold text-foreground">Manual Food Entry</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Know your macros? Type in your food details manually.
+            <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+              Already know your macros? Type in your meal details directly.
             </p>
           </div>
 
           <button
             type="button"
             onClick={() => setIsManualOpen(true)}
-            className="mt-5 w-full cursor-pointer flex items-center justify-center gap-2 rounded-xl border border-input bg-background py-3.5 text-sm font-semibold text-foreground transition hover:bg-accent"
+            className="mt-5 w-full cursor-pointer flex items-center justify-center gap-2 rounded-2xl border border-input bg-background py-3.5 text-xs sm:text-sm font-bold text-foreground transition hover:bg-accent"
           >
-            Enter Food Details <Plus className="h-4 w-4"/>
+            Enter Food Details <Plus className="h-4 w-4" />
           </button>
         </div>
       </div>
 
-      {/* Manual Food Entry Modal */}
-      {isManualOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-in fade-in">
-          <div className="w-full max-w-md rounded-3xl border border-border bg-card p-6 shadow-xl space-y-4">
-            <div className="flex items-center justify-between border-b border-border pb-3">
-              <h3 className="font-display text-lg font-bold text-foreground">Add Food Manually</h3>
-              <button
-                onClick={() => setIsManualOpen(false)}
-                className="cursor-pointer rounded-lg p-1 text-muted-foreground hover:bg-muted"
-              >
-                <X className="h-5 w-5"/>
-              </button>
-            </div>
-
-            <form onSubmit={handleManualSubmit} className="space-y-3">
-              <div>
-                <label className="text-xs font-semibold text-foreground">Meal / Food Name</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Chicken Salad"
-                  value={mealName}
-                  onChange={(e) => setMealName(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-input bg-background px-3.5 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-foreground">Calories (kcal)</label>
-                  <input
-                    type="number"
-                    placeholder="450"
-                    value={calories}
-                    onChange={(e) => setCalories(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-foreground">Protein (g)</label>
-                  <input
-                    type="number"
-                    placeholder="35"
-                    value={protein}
-                    onChange={(e) => setProtein(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-foreground">Carbs (g)</label>
-                  <input
-                    type="number"
-                    placeholder="20"
-                    value={carbs}
-                    onChange={(e) => setCarbs(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-foreground">Fat (g)</label>
-                  <input
-                    type="number"
-                    placeholder="12"
-                    value={fat}
-                    onChange={(e) => setFat(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={savingMeal}
-                className="mt-2 w-full cursor-pointer rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 disabled:opacity-50"
-              >
-                {savingMeal ? "Saving Meal..." : "Save Meal"}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* Water Hydration Card */}
-      <div className="rounded-3xl border border-border bg-card p-6 shadow-sm space-y-4">
+      <div className="rounded-3xl border border-border bg-card p-6 shadow-xs space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-500">
-              <Droplet className="h-5 w-5"/>
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-500 border border-blue-500/20">
+              <Droplet className="h-5 w-5" />
             </div>
             <div>
               <h3 className="font-display text-base font-bold text-foreground">Water Hydration</h3>
-              <p className="text-xs text-muted-foreground">Logged today: {(waterAmount / 1000).toFixed(2)} L</p>
+              <p className="text-xs text-muted-foreground">
+                Logged today: <span className="font-bold text-foreground">{(waterAmount / 1000).toFixed(2)} L</span>
+              </p>
             </div>
           </div>
 
           {/* Water Notification Toggle */}
           {notificationsEnabled ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-              <CheckCircle className="h-4 w-4"/> Water Reminders On
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="h-3.5 w-3.5" /> Reminders Active
             </span>
           ) : (
             <button
               type="button"
               onClick={enableWaterReminders}
-              className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-input bg-background px-3.5 py-2 text-xs font-semibold text-foreground transition hover:bg-accent"
+              className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-input bg-background px-3.5 py-2 text-xs font-bold text-foreground transition hover:bg-accent"
             >
-              <Bell className="h-4 w-4 text-primary"/> Enable Drink Water Reminders
+              <Bell className="h-3.5 w-3.5 text-primary" /> Enable Water Reminders
             </button>
           )}
         </div>
@@ -412,26 +358,110 @@ function NutritionPage() {
           <button
             type="button"
             onClick={() => logWater(250)}
-            className="flex cursor-pointer items-center justify-center gap-1 rounded-xl border border-blue-500/20 bg-blue-500/5 py-3 text-xs font-bold text-blue-600 transition hover:bg-blue-500/10 active:scale-95 dark:text-blue-400"
+            className="flex cursor-pointer items-center justify-center gap-1 rounded-2xl border border-blue-500/20 bg-blue-500/5 py-3 text-xs font-bold text-blue-600 transition hover:bg-blue-500/10 active:scale-95 dark:text-blue-400"
           >
-            <Plus className="h-3.5 w-3.5"/> 250 ml
+            <Plus className="h-3.5 w-3.5" /> 250 ml
           </button>
           <button
             type="button"
             onClick={() => logWater(500)}
-            className="flex cursor-pointer items-center justify-center gap-1 rounded-xl border border-blue-500/20 bg-blue-500/5 py-3 text-xs font-bold text-blue-600 transition hover:bg-blue-500/10 active:scale-95 dark:text-blue-400"
+            className="flex cursor-pointer items-center justify-center gap-1 rounded-2xl border border-blue-500/20 bg-blue-500/5 py-3 text-xs font-bold text-blue-600 transition hover:bg-blue-500/10 active:scale-95 dark:text-blue-400"
           >
-            <Plus className="h-3.5 w-3.5"/> 500 ml
+            <Plus className="h-3.5 w-3.5" /> 500 ml
           </button>
           <button
             type="button"
             onClick={() => logWater(750)}
-            className="flex cursor-pointer items-center justify-center gap-1 rounded-xl border border-blue-500/20 bg-blue-500/5 py-3 text-xs font-bold text-blue-600 transition hover:bg-blue-500/10 active:scale-95 dark:text-blue-400"
+            className="flex cursor-pointer items-center justify-center gap-1 rounded-2xl border border-blue-500/20 bg-blue-500/5 py-3 text-xs font-bold text-blue-600 transition hover:bg-blue-500/10 active:scale-95 dark:text-blue-400"
           >
-            <Plus className="h-3.5 w-3.5"/> 750 ml
+            <Plus className="h-3.5 w-3.5" /> 750 ml
           </button>
         </div>
       </div>
+
+      {/* Manual Food Entry Modal */}
+      {isManualOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs animate-in fade-in">
+          <div className="w-full max-w-md rounded-3xl border border-border bg-card p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h3 className="font-display text-lg font-bold text-foreground">Add Food Manually</h3>
+              <button
+                type="button"
+                onClick={() => setIsManualOpen(false)}
+                className="cursor-pointer rounded-lg p-1 text-muted-foreground hover:bg-muted"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleManualSubmit} className="space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-foreground">Meal / Food Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Grilled Chicken & Rice"
+                  value={mealName}
+                  onChange={(e) => setMealName(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-input bg-background px-3.5 py-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-foreground">Calories (kcal) *</label>
+                  <input
+                    type="number"
+                    required
+                    placeholder="450"
+                    value={calories}
+                    onChange={(e) => setCalories(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-input bg-background px-3.5 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-foreground">Protein (g)</label>
+                  <input
+                    type="number"
+                    placeholder="35"
+                    value={protein}
+                    onChange={(e) => setProtein(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-input bg-background px-3.5 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-foreground">Carbs (g)</label>
+                  <input
+                    type="number"
+                    placeholder="40"
+                    value={carbs}
+                    onChange={(e) => setCarbs(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-input bg-background px-3.5 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-foreground">Fat (g)</label>
+                  <input
+                    type="number"
+                    placeholder="12"
+                    value={fat}
+                    onChange={(e) => setFat(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-input bg-background px-3.5 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={savingMeal}
+                className="mt-2 w-full cursor-pointer rounded-2xl bg-primary py-3 text-xs font-bold text-primary-foreground shadow-xs transition hover:bg-primary/90 disabled:opacity-50"
+              >
+                {savingMeal ? "Saving Meal..." : "Save Meal to Daily Log"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

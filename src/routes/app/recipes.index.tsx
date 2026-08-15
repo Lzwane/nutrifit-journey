@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
 import {
   Clock,
@@ -9,7 +9,6 @@ import {
   Sparkles,
   X,
   Plus,
-  ShoppingCart,
   Loader2,
   Star,
   Camera,
@@ -18,6 +17,8 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
+import { useSubscription } from "@/lib/use-subscription";
+import { PremiumLockedScreen } from "@/components/app/premium-guard";
 
 export const Route = createFileRoute("/app/recipes/")({
   head: () => ({
@@ -31,6 +32,8 @@ export const Route = createFileRoute("/app/recipes/")({
 
 export function RecipesPage() {
   const { user } = useAuth();
+  const { hasAccess, loading: subscriptionLoading } = useSubscription();
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -73,20 +76,20 @@ export function RecipesPage() {
   ];
 
   useEffect(() => {
-    fetchAllPublishedRecipes();
-    fetchRatings();
-  }, [user]);
+    if (hasAccess) {
+      fetchAllPublishedRecipes();
+      fetchRatings();
+    }
+  }, [user, hasAccess]);
 
   const fetchAllPublishedRecipes = async () => {
     setLoadingRecipes(true);
     try {
-      // 1. Fetch Official Recipes
       const { data: official } = await supabase
         .from("recipes")
         .select("*")
         .order("created_at", { ascending: false });
 
-      // 2. Fetch Approved Community Recipes
       const { data: community } = await supabase
         .from("community_recipes")
         .select("*")
@@ -171,7 +174,6 @@ export function RecipesPage() {
     setSubmitSuccess(null);
 
     try {
-      // 1. Upload photo to Supabase storage bucket or convert to base64
       const fileExt = imageFile.name.split(".").pop();
       const fileName = `${user.id}_${Date.now()}.${fileExt}`;
       const filePath = `recipes/${fileName}`;
@@ -182,7 +184,6 @@ export function RecipesPage() {
         .upload(filePath, imageFile);
 
       if (uploadError) {
-        // Fallback: Convert to data URL if bucket is not configured
         imageUrl = imagePreview || "";
       } else {
         const { data: publicUrlData } = supabase.storage
@@ -197,7 +198,6 @@ export function RecipesPage() {
       const authorName =
         user.user_metadata?.full_name || user.email?.split("@")[0] || "NutriFit Member";
 
-      // 2. Insert into community_recipes table with status = 'pending'
       const { error: dbError } = await supabase.from("community_recipes").insert([
         {
           user_id: user.id,
@@ -233,6 +233,20 @@ export function RecipesPage() {
       setSubmitLoading(false);
     }
   };
+
+  // 1. Loading State while checking subscription
+  if (subscriptionLoading) {
+    return (
+      <div className="flex h-64 items-center justify-center text-xs text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin text-primary mr-2" /> Checking access...
+      </div>
+    );
+  }
+
+  // 2. Paywall Guard: Block the entire page if trial expired & not premium
+  if (!hasAccess) {
+    return <PremiumLockedScreen featureName="Nutritionist Recipes & Meal Plans" />;
+  }
 
   // Combine Official & Approved Community Recipes
   const allRecipes = [
@@ -429,7 +443,6 @@ export function RecipesPage() {
             )}
 
             <form onSubmit={handleSubmitCommunityRecipe} className="space-y-4">
-              {/* REQUIRED PHOTO UPLOAD */}
               <div>
                 <label className="block text-xs font-semibold text-muted-foreground mb-1">
                   Recipe Photo * (Strictly Required)

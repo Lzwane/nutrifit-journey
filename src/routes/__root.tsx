@@ -2,7 +2,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
   createRootRouteWithContext,
-  useRouter,
   useNavigate,
   useRouterState,
   HeadContent,
@@ -13,7 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 import appCss from "../styles.css?url";
 import nutrifitLogo from "@/assets/Nutrifit logo.jpeg";
-import { reportLovableError } from "../lib/lovable-error-reporting";
+import { PWAInstallModal } from "@/components/pwa-install-modal";
 
 // Inline theme script injected directly into <head> to prevent light-mode flash
 const themeScript = `
@@ -34,12 +33,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { name: "viewport", content: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" },
       { title: "NutriFit — Your Health is Your Best Partner" },
       { name: "description", content: "NutriFit is your all-in-one health & fitness companion." },
+      { name: "theme-color", content: "#10b981" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
+      { name: "apple-mobile-web-app-title", content: "NutriFit" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
+      { rel: "manifest", href: "/manifest.json" },
       { rel: "icon", href: nutrifitLogo, type: "image/jpeg" },
       { rel: "shortcut icon", href: nutrifitLogo, type: "image/jpeg" },
       { rel: "apple-touch-icon", href: nutrifitLogo },
@@ -53,7 +57,6 @@ function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <head>
-        {/* Instant Dark Mode Initialization */}
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <HeadContent />
       </head>
@@ -71,7 +74,7 @@ function RootComponent() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [checkingAuth, setCheckingAuth] = useState(true);
 
-  // Sync theme on route changes / React hydration
+  // Sync theme
   useEffect(() => {
     const savedTheme = localStorage.getItem("nutrifit-theme");
     const root = document.documentElement;
@@ -87,15 +90,13 @@ function RootComponent() {
   }, []);
 
   useEffect(() => {
-    // 1. Check initial session when app opens
+    // 1. Check initial session when app first loads
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        // Redirect logged-in user to dashboard IF they are on landing or auth (allow /onboarding and /app)
         if (pathname === "/" || pathname === "/auth") {
           navigate({ to: "/app" });
         }
       } else {
-        // Redirect unauthenticated user to /auth if trying to access protected routes
         if (pathname === "/" || pathname.startsWith("/app") || pathname === "/onboarding") {
           navigate({ to: "/auth" });
         }
@@ -103,11 +104,13 @@ function RootComponent() {
       setCheckingAuth(false);
     });
 
-    // 2. Listen for auth state changes (sign in, sign out)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    // 2. Auth change listener
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "SIGNED_IN" && session) {
-        // Only auto-redirect to /app if NOT currently completing onboarding
-        if (window.location.pathname !== "/onboarding") {
+        const currentPath = window.location.pathname;
+        if (currentPath === "/auth" || currentPath === "/") {
           navigate({ to: "/app" });
         }
       } else if (event === "SIGNED_OUT") {
@@ -118,7 +121,6 @@ function RootComponent() {
     return () => subscription.unsubscribe();
   }, [navigate, pathname]);
 
-  // Loading screen while checking existing session
   if (checkingAuth) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -130,6 +132,10 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <Outlet />
+      {/* PROMINENT PWA INSTALL PROMPT POP-UP */}
+      <PWAInstallModal />
     </QueryClientProvider>
   );
 }
+
+export default RootComponent;

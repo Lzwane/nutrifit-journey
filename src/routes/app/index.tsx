@@ -15,9 +15,14 @@ import {
   Target,
   AlertCircle,
   CheckCircle2,
+  Lock,
+  Clock,
+  ArrowRight,
+  ShieldCheck,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
+import { useSubscription } from "@/lib/use-subscription";
 
 export const Route = createFileRoute("/app/")({
   head: () => ({
@@ -67,6 +72,8 @@ function getDailyIndex(dateStr: string, totalItems: number): number {
 
 function HomePage() {
   const { user } = useAuth();
+  const { tier, daysLeft, isTrialActive, hasAccess } = useSubscription();
+
   const [profile, setProfile] = useState<Profile | null>(null);
   const [quote, setQuote] = useState<{ text: string; author: string | null } | null>(null);
   const [tip, setTip] = useState<string | null>(null);
@@ -173,10 +180,9 @@ function HomePage() {
   const waterL = todayWaterMl / 1000;
   const waterGoal = profile?.daily_water_goal_l ?? 2.5;
 
-  // Estimated Macro Goals (Customizable or based on standard 30P / 45C / 25F macro split)
-  const proteinGoal = Math.round((calGoal * 0.3) / 4); // 1g Protein = 4 kcal
-  const carbsGoal = Math.round((calGoal * 0.45) / 4);   // 1g Carb = 4 kcal
-  const fatGoal = Math.round((calGoal * 0.25) / 9);     // 1g Fat = 9 kcal
+  const proteinGoal = Math.round((calGoal * 0.3) / 4);
+  const carbsGoal = Math.round((calGoal * 0.45) / 4);
+  const fatGoal = Math.round((calGoal * 0.25) / 9);
 
   const lost =
     profile?.starting_weight_kg && profile?.current_weight_kg
@@ -220,6 +226,33 @@ function HomePage() {
         </div>
       )}
 
+      {/* EXPIRED TRIAL PROMO BANNER */}
+      {!hasAccess && (
+        <div className="rounded-3xl border border-amber-500/30 bg-amber-500/10 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm animate-in fade-in">
+          <div className="flex items-center gap-3.5">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-md">
+              <Lock className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="font-display text-sm sm:text-base font-extrabold text-foreground">
+                60-Day Free Trial Concluded
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                AI Voice Coaching and Exclusive Recipes are now locked. Upgrade to Premium to restore unlimited access.
+              </p>
+            </div>
+          </div>
+
+          <Link
+            to="/app/profile"
+            search={{ subscribe: "true" }}
+            className="cursor-pointer inline-flex items-center gap-1.5 rounded-2xl bg-amber-500 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-amber-600 transition shrink-0"
+          >
+            <Sparkles className="h-4 w-4" /> Upgrade (R49/mo) <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+      )}
+
       {/* HEADER GREETING */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
@@ -229,13 +262,36 @@ function HomePage() {
           </h1>
         </div>
 
-        <div className="flex items-center gap-2 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-2.5 text-xs sm:text-sm font-extrabold text-orange-600 dark:text-orange-400 shadow-sm transition hover:scale-105">
-          <FireIcon className="h-4 w-4 fill-orange-500 text-orange-500" />
-          <span>{profile?.streak_count ?? 0} Day Streak</span>
+        <div className="flex items-center gap-2">
+          {tier === "premium" ? (
+            <div className="flex items-center gap-1.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-3.5 py-2 text-xs font-extrabold text-emerald-600 dark:text-emerald-400">
+              <ShieldCheck className="h-4 w-4" />
+              <span>Premium</span>
+            </div>
+          ) : isTrialActive ? (
+            <div className="flex items-center gap-1.5 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-3.5 py-2 text-xs font-extrabold text-amber-600 dark:text-amber-400">
+              <Clock className="h-4 w-4" />
+              <span>{daysLeft}d Trial Left</span>
+            </div>
+          ) : (
+            <Link
+              to="/app/profile"
+              search={{ subscribe: "true" }}
+              className="flex items-center gap-1.5 rounded-2xl border border-rose-500/20 bg-rose-500/10 px-3.5 py-2 text-xs font-extrabold text-rose-600 dark:text-rose-400 hover:scale-105 transition"
+            >
+              <Lock className="h-3.5 w-3.5" />
+              <span>Trial Expired</span>
+            </Link>
+          )}
+
+          <div className="flex items-center gap-2 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-2 text-xs font-extrabold text-orange-600 dark:text-orange-400 shadow-sm">
+            <FireIcon className="h-4 w-4 fill-orange-500 text-orange-500" />
+            <span>{profile?.streak_count ?? 0} Day Streak</span>
+          </div>
         </div>
       </div>
 
-      {/* COOL REAL-TIME CALORIE & MACRO PROGRESS DASHBOARD */}
+      {/* REAL-TIME CALORIE & MACRO PROGRESS DASHBOARD (FREE FOREVER) */}
       <section className="rounded-3xl border border-border bg-card p-6 sm:p-8 shadow-sm space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-5">
           <div className="flex items-center gap-3">
@@ -248,7 +304,6 @@ function HomePage() {
             </div>
           </div>
 
-          {/* DYNAMIC REMAINING / EXCEEDED BADGE */}
           <div
             className={`flex items-center gap-2 rounded-2xl px-4 py-2 text-xs font-extrabold border shadow-sm ${
               isCalExceeded
@@ -293,7 +348,6 @@ function HomePage() {
 
         {/* 4-COLUMN MACRO BREAKDOWN BARS */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
-          {/* PROTEIN */}
           <MacroBar
             label="Protein"
             current={`${todayProtein}g`}
@@ -303,7 +357,6 @@ function HomePage() {
             badgeColor="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
           />
 
-          {/* CARBS */}
           <MacroBar
             label="Carbs"
             current={`${todayCarbs}g`}
@@ -313,7 +366,6 @@ function HomePage() {
             badgeColor="bg-sky-500/10 text-sky-600 dark:text-sky-400"
           />
 
-          {/* FATS */}
           <MacroBar
             label="Fats"
             current={`${todayFat}g`}
@@ -323,7 +375,6 @@ function HomePage() {
             badgeColor="bg-amber-500/10 text-amber-600 dark:text-amber-400"
           />
 
-          {/* WATER */}
           <MacroBar
             label="Water"
             current={`${waterL.toFixed(1)}L`}
@@ -337,29 +388,42 @@ function HomePage() {
 
       {/* QUICK ACTIONS GRID */}
       <div className="grid grid-cols-2 gap-3.5 md:grid-cols-4">
+        {/* FREE FOREVER: START WORKOUT */}
         <QuickAction
           to="/app/workouts"
           icon={Play}
           label="Start Workout"
           colorClass="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
         />
+
+        {/* FREE FOREVER: LOG WEIGHT */}
         <QuickAction
           to="/app/profile"
           icon={TrendingUp}
           label="Log Weight"
           colorClass="bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20"
         />
+
+        {/* FREE FOREVER: LOG WATER & MEALS */}
         <QuickAction
           to="/app/nutrition"
           icon={Droplet}
           label="Log Water & Meals"
           colorClass="bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20"
         />
+
+        {/* PREMIUM ONLY: ASK AI COACH */}
         <QuickAction
-          to="/app/coach"
-          icon={Sparkles}
-          label="Ask AI Coach"
-          colorClass="bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20"
+          to={hasAccess ? "/app/coach" : "/app/profile"}
+          search={hasAccess ? undefined : { subscribe: "true" }}
+          icon={hasAccess ? Sparkles : Lock}
+          label="Ask NutriGuide AI"
+          colorClass={
+            hasAccess
+              ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20"
+              : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
+          }
+          isLocked={!hasAccess}
         />
       </div>
 
@@ -458,20 +522,30 @@ function MacroBar({
 // QUICK ACTION BUTTON COMPONENT
 function QuickAction({
   to,
+  search,
   icon: Icon,
   label,
   colorClass,
+  isLocked = false,
 }: {
   to: string;
+  search?: any;
   icon: any;
   label: string;
   colorClass: string;
+  isLocked?: boolean;
 }) {
   return (
     <Link
       to={to}
-      className="group flex flex-col items-start gap-3 rounded-3xl border border-border bg-card p-4 transition-all duration-200 hover:scale-[1.02] hover:shadow-md active:scale-[0.98] cursor-pointer"
+      search={search}
+      className="group relative flex flex-col items-start gap-3 rounded-3xl border border-border bg-card p-4 transition-all duration-200 hover:scale-[1.02] hover:shadow-md active:scale-[0.98] cursor-pointer"
     >
+      {isLocked && (
+        <span className="absolute right-3 top-3 rounded-md bg-amber-500/20 px-2 py-0.5 text-[9px] font-extrabold uppercase text-amber-600 dark:text-amber-400 border border-amber-500/30">
+          PRO
+        </span>
+      )}
       <div className={`grid h-10 w-10 place-items-center rounded-2xl border ${colorClass} transition-transform group-hover:scale-110 shadow-xs`}>
         <Icon className="h-5 w-5" />
       </div>

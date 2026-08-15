@@ -29,12 +29,18 @@ import {
   Edit3,
   UserMinus,
   Eye,
+  CreditCard,
+  Calendar,
+  Sparkles,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/admin/")({
   component: AdminDashboardPage,
 });
+
+const ADMIN_EXCLUDE_ID = "4b30f655-97e2-40d9-a437-eedab7aad214";
+const ADMIN_EXCLUDE_EMAIL = "admin@nutrifit.co.za";
 
 interface RecipeForm {
   title: string;
@@ -73,20 +79,41 @@ interface ChatGroup {
   description: string;
   max_members?: number;
   created_at: string;
+  member_count?: number;
 }
 
 interface GroupMember {
   user_id: string;
   full_name: string;
-  joined_at?: string;
+  email?: string;
+}
+
+interface SubscriberInfo {
+  id: string;
+  full_name: string;
+  email?: string;
+  tier: string;
+  amount_rands: number;
+  billing_day: number;
+  next_billing_date: string | null;
+  card_last_four: string | null;
+  card_brand: string | null;
 }
 
 function AdminDashboardPage() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<"overview" | "recipes" | "community" | "groups" | "profile">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "recipes" | "community" | "groups" | "subscribers" | "profile">("overview");
 
-  // Scoped Theme State
+  // Theme State
   const [adminTheme, setAdminTheme] = useState<"dark" | "light">("dark");
+
+  // Real Database Metrics State
+  const [metricsLoading, setMetricsLoading] = useState(true);
+  const [totalUsersCount, setTotalUsersCount] = useState(0);
+  const [dailyLogsCount, setDailyLogsCount] = useState(0);
+  const [freeUsersCount, setFreeUsersCount] = useState(0);
+  const [premiumUsersCount, setPremiumUsersCount] = useState(0);
+  const [subscribersList, setSubscribersList] = useState<SubscriberInfo[]>([]);
 
   // Recipe Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -138,10 +165,84 @@ function AdminDashboardPage() {
   });
 
   useEffect(() => {
+    fetchRealDatabaseMetrics();
     fetchOfficialRecipes();
     fetchPendingCommunityRecipes();
     fetchChatGroups();
   }, []);
+
+  // 1. FETCH REAL DATABASE METRICS (EXCLUDES ADMIN ACCOUNT)
+  const fetchRealDatabaseMetrics = async () => {
+    setMetricsLoading(true);
+    const today = new Date().toISOString().slice(0, 10);
+
+    try {
+      const { data: profiles, error: pError } = await supabase
+        .from("profiles")
+        .select("*");
+
+      if (!pError && profiles) {
+        // Exclude system admin from normal user statistics
+        const regularUsers = profiles.filter(
+          (p: any) => p.id !== ADMIN_EXCLUDE_ID && p.email !== ADMIN_EXCLUDE_EMAIL
+        );
+
+        setTotalUsersCount(regularUsers.length);
+
+        let freeCount = 0;
+        let premCount = 0;
+        const subs: SubscriberInfo[] = [];
+
+        regularUsers.forEach((p: any) => {
+          const isPrem =
+            p.subscription_tier?.toLowerCase() === "premium" ||
+            p.subscription_status?.toLowerCase() === "active";
+
+          if (isPrem) {
+            premCount++;
+            const billingDate = p.next_billing_date ? new Date(p.next_billing_date) : new Date();
+            const resolvedName =
+              p.full_name?.trim() ||
+              [p.first_name, p.last_name].filter(Boolean).join(" ").trim() ||
+              p.email?.split("@")[0] ||
+              "Registered Member";
+
+            subs.push({
+              id: p.id,
+              full_name: resolvedName,
+              email: p.email || p.phone_number || "User Account",
+              tier: "NutriFit Premium",
+              amount_rands: 49.0,
+              billing_day: billingDate.getDate(),
+              next_billing_date: p.next_billing_date,
+              card_last_four: p.card_last_four || "••••",
+              card_brand: p.card_brand || "Visa / Mastercard",
+            });
+          } else {
+            freeCount++;
+          }
+        });
+
+        setFreeUsersCount(freeCount);
+        setPremiumUsersCount(premCount);
+        setSubscribersList(subs);
+      }
+
+      // Fetch Real Activity Logs For Today
+      const [{ count: foodCount }, { count: waterCount }, { count: workoutCount }] = await Promise.all([
+        supabase.from("food_logs").select("*", { count: "exact", head: true }).eq("log_date", today),
+        supabase.from("water_logs").select("*", { count: "exact", head: true }).eq("log_date", today),
+        supabase.from("workout_sessions").select("*", { count: "exact", head: true }).gte("started_at", today + "T00:00:00"),
+      ]);
+
+      const totalLogs = (foodCount || 0) + (waterCount || 0) + (workoutCount || 0);
+      setDailyLogsCount(totalLogs);
+    } catch (err) {
+      console.error("Failed to load real database metrics:", err);
+    } finally {
+      setMetricsLoading(false);
+    }
+  };
 
   const fetchOfficialRecipes = async () => {
     setFetchingRecipes(true);
@@ -177,16 +278,27 @@ function AdminDashboardPage() {
     }
   };
 
+  // 2. FETCH CHAT GROUPS & ACCURATE LIVE MEMBER COUNTS
   const fetchChatGroups = async () => {
     setFetchingGroups(true);
     try {
-      const { data, error } = await supabase
-        .from("chat_groups")
-        .select("*")
-        .order("created_at", { ascending: false });
+      const [{ data: groupsData }, { data: membersData }] = await Promise.all([
+        supabase.from("chat_groups").select("*").order("created_at", { ascending: false }),
+        supabase.from("chat_group_members").select("group_id"),
+      ]);
 
-      if (!error && data) {
-        setChatGroups(data);
+      if (groupsData) {
+        const countMap: { [key: string]: number } = {};
+        (membersData || []).forEach((m: any) => {
+          countMap[m.group_id] = (countMap[m.group_id] || 0) + 1;
+        });
+
+        const formatted = groupsData.map((g: any) => ({
+          ...g,
+          member_count: countMap[g.id] || 0,
+        }));
+
+        setChatGroups(formatted);
       }
     } catch (err) {
       console.error("Failed to load chat groups:", err);
@@ -195,22 +307,51 @@ function AdminDashboardPage() {
     }
   };
 
+  // 3. RELIABLE GROUP MEMBER ROSTER RESOLVER (Fixes "NutriFit Member" bug)
   const fetchGroupMembers = async (groupId: string) => {
     setLoadingMembers(true);
     try {
-      const { data, error } = await supabase
+      const { data: memberRows, error: mErr } = await supabase
         .from("chat_group_members")
-        .select("user_id, joined_at, profiles(full_name)")
+        .select("*")
         .eq("group_id", groupId);
 
-      if (!error && data) {
-        const formatted: GroupMember[] = data.map((item: any) => ({
-          user_id: item.user_id,
-          full_name: item.profiles?.full_name || "NutriFit Member",
-          joined_at: item.joined_at,
-        }));
-        setGroupMembersList(formatted);
+      if (mErr) throw mErr;
+
+      if (!memberRows || memberRows.length === 0) {
+        setGroupMembersList([]);
+        return;
       }
+
+      const userIds = memberRows.map((r: any) => r.user_id).filter(Boolean);
+
+      // Fetch all profile records for these user IDs
+      const { data: profileRows } = await supabase
+        .from("profiles")
+        .select("*")
+        .in("id", userIds);
+
+      const profileMap: { [key: string]: any } = {};
+      (profileRows || []).forEach((p: any) => {
+        profileMap[p.id] = p;
+      });
+
+      const formatted: GroupMember[] = userIds.map((uid: string) => {
+        const prof = profileMap[uid];
+        const resolvedName =
+          prof?.full_name?.trim() ||
+          [prof?.first_name, prof?.last_name].filter(Boolean).join(" ").trim() ||
+          prof?.email?.split("@")[0] ||
+          `User (${uid.slice(0, 6)})`;
+
+        return {
+          user_id: uid,
+          full_name: resolvedName,
+          email: prof?.email || prof?.phone_number || "Active Member",
+        };
+      });
+
+      setGroupMembersList(formatted);
     } catch (err) {
       console.error("Failed to load members:", err);
     } finally {
@@ -223,7 +364,6 @@ function AdminDashboardPage() {
     navigate({ to: "/auth" });
   };
 
-  // Recipe Handlers
   const handleCreateRecipe = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -294,14 +434,12 @@ function AdminDashboardPage() {
     }
   };
 
-  // Group Handlers (Create & Update)
   const handleSaveGroup = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
       if (editingGroup) {
-        // UPDATE EXISTING GROUP
         const { error } = await supabase
           .from("chat_groups")
           .update({
@@ -314,7 +452,6 @@ function AdminDashboardPage() {
 
         if (error) throw error;
       } else {
-        // CREATE NEW GROUP
         const { error } = await supabase.from("chat_groups").insert([
           {
             name: groupForm.name,
@@ -373,6 +510,7 @@ function AdminDashboardPage() {
 
       if (error) throw error;
       setGroupMembersList((prev) => prev.filter((m) => m.user_id !== userId));
+      fetchChatGroups();
     } catch (err: any) {
       alert("Failed to remove member: " + err.message);
     }
@@ -420,6 +558,8 @@ function AdminDashboardPage() {
     }
   };
 
+  const totalMonthlyRevenue = subscribersList.length * 49;
+
   return (
     <div
       className={`min-h-screen flex font-sans ${
@@ -442,7 +582,7 @@ function AdminDashboardPage() {
                 NutriFit Admin
               </span>
               <span className="text-[10px] text-emerald-500 font-semibold uppercase tracking-wider">
-                System Oversight
+                Live Data Oversight
               </span>
             </div>
           </div>
@@ -461,6 +601,26 @@ function AdminDashboardPage() {
             >
               <Activity className="h-4 w-4" />
               <span>App Oversight</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab("subscribers")}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
+                activeTab === "subscribers"
+                  ? "bg-emerald-500 text-white shadow-sm"
+                  : adminTheme === "dark"
+                  ? "text-slate-400 hover:bg-slate-800 hover:text-white"
+                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+              }`}
+            >
+              <div className="flex items-center space-x-3">
+                <CreditCard className="h-4 w-4" />
+                <span>Subscribers &amp; Pay</span>
+              </div>
+              <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] text-emerald-400 font-bold">
+                {premiumUsersCount}
+              </span>
             </button>
 
             <button
@@ -543,101 +703,198 @@ function AdminDashboardPage() {
 
       {/* MAIN CONTENT AREA */}
       <main className="flex-1 overflow-y-auto p-8">
-        {/* TAB 1: APP OVERSIGHT */}
+        
+        {/* TAB 1: OVERVIEW METRICS */}
         {activeTab === "overview" && (
           <div className="space-y-8 max-w-5xl">
-            <header>
-              <h1 className="text-2xl font-bold tracking-tight">App Oversight &amp; Analytics</h1>
-              <p className="text-xs text-slate-400 mt-1">
-                Real-time user engagement, metrics, and operational performance across NutriFit.
-              </p>
+            <header className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight">App Oversight &amp; Real Data</h1>
+                <p className="text-xs text-slate-400 mt-1">
+                  Live metrics synced directly from your Supabase production database.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={fetchRealDatabaseMetrics}
+                className="flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:text-white cursor-pointer"
+              >
+                <Activity className="h-3.5 w-3.5 text-emerald-400" /> Refresh Data
+              </button>
             </header>
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div
-                className={`rounded-2xl border p-5 shadow-sm ${
-                  adminTheme === "dark" ? "border-slate-800 bg-slate-900/60" : "border-slate-200 bg-white"
-                }`}
-              >
+              <div className={`rounded-2xl border p-5 shadow-sm ${adminTheme === "dark" ? "border-slate-800 bg-slate-900/60" : "border-slate-200 bg-white"}`}>
                 <div className="flex items-center justify-between text-slate-400 mb-3">
-                  <span className="text-xs font-medium">Active Users</span>
+                  <span className="text-xs font-medium">Total Registered Users</span>
                   <Users className="h-4 w-4 text-emerald-500" />
                 </div>
-                <div className="text-2xl font-extrabold">1,480</div>
-                <span className="text-[10px] font-semibold text-emerald-500 flex items-center gap-1 mt-1">
-                  <TrendingUp className="h-3 w-3" /> +12% this week
+                <div className="text-2xl font-extrabold">
+                  {metricsLoading ? <Loader2 className="h-6 w-6 animate-spin text-slate-500" /> : totalUsersCount}
+                </div>
+                <span className="text-[10px] font-semibold text-slate-400 mt-1 block">
+                  Excludes Admin Account
                 </span>
               </div>
 
-              <div
-                className={`rounded-2xl border p-5 shadow-sm ${
-                  adminTheme === "dark" ? "border-slate-800 bg-slate-900/60" : "border-slate-200 bg-white"
-                }`}
-              >
+              <div className={`rounded-2xl border p-5 shadow-sm ${adminTheme === "dark" ? "border-slate-800 bg-slate-900/60" : "border-slate-200 bg-white"}`}>
                 <div className="flex items-center justify-between text-slate-400 mb-3">
-                  <span className="text-xs font-medium">Daily Active Logs</span>
+                  <span className="text-xs font-medium">Today's Real Activity Logs</span>
                   <Activity className="h-4 w-4 text-sky-500" />
                 </div>
-                <div className="text-2xl font-extrabold">8,320</div>
-                <span className="text-[10px] text-slate-400 mt-1 block">Meals &amp; Water Logs</span>
+                <div className="text-2xl font-extrabold">
+                  {metricsLoading ? <Loader2 className="h-6 w-6 animate-spin text-slate-500" /> : dailyLogsCount}
+                </div>
+                <span className="text-[10px] text-slate-400 mt-1 block">
+                  Meals + Water + Workouts Today
+                </span>
               </div>
 
-              <div
-                className={`rounded-2xl border p-5 shadow-sm ${
-                  adminTheme === "dark" ? "border-slate-800 bg-slate-900/60" : "border-slate-200 bg-white"
-                }`}
-              >
+              <div className={`rounded-2xl border p-5 shadow-sm ${adminTheme === "dark" ? "border-slate-800 bg-slate-900/60" : "border-slate-200 bg-white"}`}>
                 <div className="flex items-center justify-between text-slate-400 mb-3">
-                  <span className="text-xs font-medium">Published Official Recipes</span>
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                  <span className="text-xs font-medium">Free Tier / In Trial</span>
+                  <Users className="h-4 w-4 text-amber-500" />
                 </div>
-                <div className="text-2xl font-extrabold">{publishedRecipes.length}</div>
-                <span className="text-[10px] text-slate-400 mt-1 block">Nutritionist Verified</span>
+                <div className="text-2xl font-extrabold text-amber-500">
+                  {metricsLoading ? <Loader2 className="h-6 w-6 animate-spin text-slate-500" /> : freeUsersCount}
+                </div>
+                <span className="text-[10px] text-slate-400 mt-1 block">
+                  Free / 60-Day Trial Users
+                </span>
               </div>
 
-              <div
-                className={`rounded-2xl border p-5 shadow-sm ${
-                  adminTheme === "dark" ? "border-slate-800 bg-slate-900/60" : "border-slate-200 bg-white"
-                }`}
-              >
+              <div className={`rounded-2xl border p-5 shadow-sm ${adminTheme === "dark" ? "border-slate-800 bg-slate-900/60" : "border-slate-200 bg-white"}`}>
                 <div className="flex items-center justify-between text-slate-400 mb-3">
-                  <span className="text-xs font-medium">Pending Recipe Reviews</span>
-                  <AlertTriangle className="h-4 w-4 text-amber-500" />
+                  <span className="text-xs font-medium">Paid Premium Subscribers</span>
+                  <Sparkles className="h-4 w-4 text-emerald-500" />
                 </div>
-                <div className="text-2xl font-extrabold">{pendingRecipes.length}</div>
-                <span className="text-[10px] text-amber-500 font-semibold mt-1 block">
-                  {pendingRecipes.length > 0 ? "Requires review" : "Queue clear"}
+                <div className="text-2xl font-extrabold text-emerald-400">
+                  {metricsLoading ? <Loader2 className="h-6 w-6 animate-spin text-slate-500" /> : premiumUsersCount}
+                </div>
+                <span className="text-[10px] font-semibold text-emerald-500 mt-1 block">
+                  R49.00 / month recurring
                 </span>
               </div>
             </div>
 
-            <div
-              className={`rounded-3xl border p-6 shadow-sm ${
-                adminTheme === "dark" ? "border-slate-800 bg-slate-900/60" : "border-slate-200 bg-white"
-              }`}
-            >
+            <div className={`rounded-3xl border p-6 shadow-sm ${adminTheme === "dark" ? "border-slate-800 bg-slate-900/60" : "border-slate-200 bg-white"}`}>
               <h3 className="text-base font-bold mb-4 flex items-center gap-2">
-                <Layers className="h-4 w-4 text-emerald-500" /> Active System Module Insights
+                <Layers className="h-4 w-4 text-emerald-500" /> Database Summary
               </h3>
               <div className="space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-800/50 pb-3 text-xs">
-                  <span className="font-semibold">AI Voice Coach Queries</span>
-                  <span className="font-mono text-slate-400">3,120 queries/day</span>
+                  <span className="font-semibold">Published Official Recipes</span>
+                  <span className="font-mono text-emerald-400 font-bold">{publishedRecipes.length} live</span>
                 </div>
                 <div className="flex items-center justify-between border-b border-slate-800/50 pb-3 text-xs">
-                  <span className="font-semibold">Workout Starts</span>
-                  <span className="font-mono text-slate-400">940 sessions</span>
+                  <span className="font-semibold">Community Submissions Awaiting Approval</span>
+                  <span className="font-mono text-amber-400 font-bold">{pendingRecipes.length} pending</span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold">Community Chat Groups</span>
-                  <span className="font-mono text-slate-400">{chatGroups.length} active groups</span>
+                  <span className="font-semibold">Active Community Chat Groups</span>
+                  <span className="font-mono text-slate-400">{chatGroups.length} groups created</span>
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* TAB 2: OFFICIAL RECIPES */}
+        {/* TAB 2: DETAILED SUBSCRIBERS & REVENUE CALCULATOR */}
+        {activeTab === "subscribers" && (
+          <div className="space-y-8 max-w-5xl">
+            <header className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+                  <CreditCard className="h-6 w-6 text-emerald-500" /> Premium Subscribers &amp; Revenue Details
+                </h1>
+                <p className="text-xs text-slate-400 mt-1">
+                  Accurate details of all paying members, their payment day, and total recurring income.
+                </p>
+              </div>
+            </header>
+
+            {/* REVENUE & MEMBERSHIP BREAKDOWN */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className={`p-5 rounded-2xl border ${adminTheme === "dark" ? "border-slate-800 bg-slate-900/60" : "border-slate-200 bg-white"}`}>
+                <span className="text-xs font-semibold text-slate-400 block mb-1">Free / Trial Members</span>
+                <span className="text-2xl font-extrabold text-amber-400">{freeUsersCount}</span>
+                <p className="text-[11px] text-slate-500 mt-1">Free features or active 60-day trial</p>
+              </div>
+
+              <div className={`p-5 rounded-2xl border ${adminTheme === "dark" ? "border-slate-800 bg-slate-900/60" : "border-slate-200 bg-white"}`}>
+                <span className="text-xs font-semibold text-slate-400 block mb-1">Paid Premium Subscribers</span>
+                <span className="text-2xl font-extrabold text-emerald-400">{premiumUsersCount}</span>
+                <p className="text-[11px] text-slate-500 mt-1">Full AI &amp; Recipe access</p>
+              </div>
+
+              <div className={`p-5 rounded-2xl border ${adminTheme === "dark" ? "border-slate-800 bg-slate-900/60" : "border-slate-200 bg-white"}`}>
+                <span className="text-xs font-semibold text-slate-400 block mb-1">Total Monthly Revenue</span>
+                <span className="text-2xl font-extrabold text-emerald-400">R{totalMonthlyRevenue.toFixed(2)}</span>
+                <p className="text-[11px] text-slate-500 mt-1">Calculated from R49.00 / user</p>
+              </div>
+            </div>
+
+            {/* SUBSCRIBERS DETAILED LIST */}
+            <div className={`rounded-3xl border p-6 shadow-sm ${adminTheme === "dark" ? "border-slate-800 bg-slate-900/60" : "border-slate-200 bg-white"}`}>
+              <h2 className="text-base font-bold mb-4 flex items-center justify-between">
+                <span>Paying Member Details ({subscribersList.length})</span>
+              </h2>
+
+              {subscribersList.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-800 p-8 text-center text-xs text-slate-400">
+                  No active paying members in the database yet.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider text-[10px]">
+                        <th className="pb-3 font-semibold">Member</th>
+                        <th className="pb-3 font-semibold">Tier &amp; Price</th>
+                        <th className="pb-3 font-semibold">Payment Day of Month</th>
+                        <th className="pb-3 font-semibold">Next Deduction</th>
+                        <th className="pb-3 font-semibold">Payment Method</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60">
+                      {subscribersList.map((sub) => (
+                        <tr key={sub.id} className="text-slate-200">
+                          <td className="py-3.5 font-bold">
+                            <div className="flex items-center gap-2.5">
+                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400 font-bold text-xs">
+                                {sub.full_name[0] || "U"}
+                              </div>
+                              <div>
+                                <p className="text-xs font-bold text-slate-100">{sub.full_name}</p>
+                                <p className="text-[10px] text-slate-500">{sub.email}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3.5">
+                            <span className="rounded-md bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400">
+                              R49.00 / month
+                            </span>
+                          </td>
+                          <td className="py-3.5 font-bold text-emerald-400 flex items-center gap-1">
+                            <Calendar className="h-3.5 w-3.5" /> Day {sub.billing_day} of every month
+                          </td>
+                          <td className="py-3.5 font-mono text-slate-400">
+                            {sub.next_billing_date ? new Date(sub.next_billing_date).toLocaleDateString() : "Active"}
+                          </td>
+                          <td className="py-3.5 font-mono text-slate-400">
+                            {sub.card_brand} (•••• {sub.card_last_four})
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: OFFICIAL RECIPES */}
         {activeTab === "recipes" && (
           <div className="space-y-8 max-w-5xl">
             <header className="flex items-center justify-between">
@@ -665,11 +922,7 @@ function AdminDashboardPage() {
               </div>
             )}
 
-            <div
-              className={`rounded-3xl border p-6 shadow-sm ${
-                adminTheme === "dark" ? "border-slate-800 bg-slate-900/60" : "border-slate-200 bg-white"
-              }`}
-            >
+            <div className={`rounded-3xl border p-6 shadow-sm ${adminTheme === "dark" ? "border-slate-800 bg-slate-900/60" : "border-slate-200 bg-white"}`}>
               <h2 className="text-base font-bold mb-4 flex items-center justify-between">
                 <span>Published Official Catalog ({publishedRecipes.length})</span>
                 {fetchingRecipes && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
@@ -731,7 +984,7 @@ function AdminDashboardPage() {
           </div>
         )}
 
-        {/* TAB 3: REVIEW COMMUNITY RECIPES */}
+        {/* TAB 4: REVIEW COMMUNITY RECIPES */}
         {activeTab === "community" && (
           <div className="space-y-8 max-w-5xl">
             <header>
@@ -744,11 +997,7 @@ function AdminDashboardPage() {
             </header>
 
             {pendingRecipes.length === 0 ? (
-              <div
-                className={`rounded-3xl border p-12 text-center text-xs text-slate-400 shadow-sm ${
-                  adminTheme === "dark" ? "border-slate-800 bg-slate-900/60" : "border-slate-200 bg-white"
-                }`}
-              >
+              <div className={`rounded-3xl border p-12 text-center text-xs text-slate-400 shadow-sm ${adminTheme === "dark" ? "border-slate-800 bg-slate-900/60" : "border-slate-200 bg-white"}`}>
                 <CheckCircle2 className="h-10 w-10 text-emerald-500 mx-auto mb-3 opacity-80" />
                 <h3 className="text-sm font-bold text-slate-200">All caught up!</h3>
                 <p className="mt-1">There are no pending community recipe submissions to review right now.</p>
@@ -869,7 +1118,7 @@ function AdminDashboardPage() {
           </div>
         )}
 
-        {/* TAB 4: MANAGE CHAT GROUPS (FULL EDIT & MEMBER REMOVAL) */}
+        {/* TAB 5: CHAT GROUPS WITH LIVE ACCURATE ROSTER */}
         {activeTab === "groups" && (
           <div className="space-y-8 max-w-5xl">
             <header className="flex items-center justify-between">
@@ -878,7 +1127,7 @@ function AdminDashboardPage() {
                   <Users className="h-6 w-6 text-emerald-500" /> Community Group Management
                 </h1>
                 <p className="text-xs text-slate-400 mt-1">
-                  Create, edit group details, configure member limits, inspect rosters, or delete NutriFit chat groups.
+                  Create, edit group details, inspect live members roster, and delete chat rooms.
                 </p>
               </div>
 
@@ -900,11 +1149,7 @@ function AdminDashboardPage() {
               </button>
             </header>
 
-            <div
-              className={`rounded-3xl border p-6 shadow-sm ${
-                adminTheme === "dark" ? "border-slate-800 bg-slate-900/60" : "border-slate-200 bg-white"
-              }`}
-            >
+            <div className={`rounded-3xl border p-6 shadow-sm ${adminTheme === "dark" ? "border-slate-800 bg-slate-900/60" : "border-slate-200 bg-white"}`}>
               <h2 className="text-base font-bold mb-4 flex items-center justify-between">
                 <span>Active Chat Groups ({chatGroups.length})</span>
                 {fetchingGroups && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
@@ -933,7 +1178,6 @@ function AdminDashboardPage() {
                           </div>
 
                           <div className="flex items-center gap-1">
-                            {/* EDIT GROUP BUTTON */}
                             <button
                               type="button"
                               onClick={() => openEditGroupModal(group)}
@@ -943,7 +1187,6 @@ function AdminDashboardPage() {
                               <Edit3 className="h-4 w-4" />
                             </button>
 
-                            {/* DELETE GROUP BUTTON */}
                             <button
                               type="button"
                               onClick={() => handleDeleteGroup(group.id)}
@@ -962,7 +1205,7 @@ function AdminDashboardPage() {
 
                       <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs text-slate-400">
                         <span className="flex items-center gap-1 text-emerald-400 font-bold">
-                          <UserPlus className="h-3.5 w-3.5" /> Max: {group.max_members || 100} members
+                          <Users className="h-3.5 w-3.5" /> {group.member_count || 0} / {group.max_members || 100} members
                         </span>
 
                         <button
@@ -970,7 +1213,7 @@ function AdminDashboardPage() {
                           onClick={() => openMembersModal(group)}
                           className="flex items-center gap-1 text-xs font-bold text-sky-400 hover:underline cursor-pointer"
                         >
-                          <Eye className="h-3.5 w-3.5" /> View Members
+                          <Eye className="h-3.5 w-3.5" /> View Members ({group.member_count || 0})
                         </button>
                       </div>
                     </div>
@@ -981,7 +1224,7 @@ function AdminDashboardPage() {
           </div>
         )}
 
-        {/* TAB 5: ADMIN PROFILE & SCOPED SETTINGS */}
+        {/* TAB 6: ADMIN SETTINGS */}
         {activeTab === "profile" && (
           <div className="space-y-8 max-w-3xl">
             <header>
@@ -993,11 +1236,7 @@ function AdminDashboardPage() {
               </p>
             </header>
 
-            <div
-              className={`rounded-3xl border p-6 shadow-sm space-y-6 ${
-                adminTheme === "dark" ? "border-slate-800 bg-slate-900/60" : "border-slate-200 bg-white"
-              }`}
-            >
+            <div className={`rounded-3xl border p-6 shadow-sm space-y-6 ${adminTheme === "dark" ? "border-slate-800 bg-slate-900/60" : "border-slate-200 bg-white"}`}>
               <div className="flex items-center gap-4 border-b border-slate-800/60 pb-6">
                 <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 font-bold text-xl shrink-0">
                   <User className="h-8 w-8" />
@@ -1055,11 +1294,7 @@ function AdminDashboardPage() {
       {/* CREATE / EDIT CHAT GROUP MODAL */}
       {isGroupModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-xs">
-          <div
-            className={`w-full max-w-lg rounded-3xl border p-6 shadow-xl ${
-              adminTheme === "dark" ? "border-slate-800 bg-slate-900 text-slate-100" : "border-slate-200 bg-white text-slate-900"
-            }`}
-          >
+          <div className={`w-full max-w-lg rounded-3xl border p-6 shadow-xl ${adminTheme === "dark" ? "border-slate-800 bg-slate-900 text-slate-100" : "border-slate-200 bg-white text-slate-900"}`}>
             <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">
               <h2 className="text-lg font-bold flex items-center gap-2">
                 <Users className="h-5 w-5 text-emerald-500" />{" "}
@@ -1159,11 +1394,7 @@ function AdminDashboardPage() {
       {/* VIEW & REMOVE GROUP MEMBERS MODAL */}
       {managingMembersGroup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-xs">
-          <div
-            className={`w-full max-w-md rounded-3xl border p-6 shadow-xl max-h-[85vh] overflow-y-auto ${
-              adminTheme === "dark" ? "border-slate-800 bg-slate-900 text-slate-100" : "border-slate-200 bg-white text-slate-900"
-            }`}
-          >
+          <div className={`w-full max-w-md rounded-3xl border p-6 shadow-xl max-h-[85vh] overflow-y-auto ${adminTheme === "dark" ? "border-slate-800 bg-slate-900 text-slate-100" : "border-slate-200 bg-white text-slate-900"}`}>
             <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">
               <div>
                 <h2 className="text-base font-bold flex items-center gap-2">
@@ -1208,7 +1439,7 @@ function AdminDashboardPage() {
                         <div>
                           <p className="text-xs font-bold text-slate-200">{m.full_name}</p>
                           <p className="text-[10px] text-slate-500 font-mono">
-                            ID: {m.user_id.slice(0, 8)}...
+                            {m.email}
                           </p>
                         </div>
                       </div>
@@ -1233,11 +1464,7 @@ function AdminDashboardPage() {
       {/* CREATE OFFICIAL RECIPE MODAL */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-xs">
-          <div
-            className={`w-full max-w-2xl rounded-3xl border p-6 shadow-xl max-h-[90vh] overflow-y-auto ${
-              adminTheme === "dark" ? "border-slate-800 bg-slate-900 text-slate-100" : "border-slate-200 bg-white text-slate-900"
-            }`}
-          >
+          <div className={`w-full max-w-2xl rounded-3xl border p-6 shadow-xl max-h-[90vh] overflow-y-auto ${adminTheme === "dark" ? "border-slate-800 bg-slate-900 text-slate-100" : "border-slate-200 bg-white text-slate-900"}`}>
             <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">
               <h2 className="text-lg font-bold flex items-center gap-2">
                 <Plus className="h-5 w-5 text-emerald-500" /> Create &amp; Publish Official Recipe

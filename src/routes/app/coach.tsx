@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/lib/auth";
+import { useSubscription } from "@/lib/use-subscription";
+import { PremiumLockedScreen } from "@/components/app/premium-guard";
 import {
   Send,
   Volume2,
@@ -57,6 +59,8 @@ function speakText(text: string, onEnd?: () => void) {
 
 function AICoachPage() {
   const { user } = useAuth();
+  const { hasAccess, loading: subscriptionLoading } = useSubscription();
+
   const [activeTab, setActiveTab] = useState<"voice" | "chat">("voice");
 
   const [messages, setMessages] = useState<Message[]>([
@@ -93,6 +97,8 @@ function AICoachPage() {
 
   // Web Speech Recognition Setup
   useEffect(() => {
+    if (!hasAccess) return;
+
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
@@ -149,7 +155,11 @@ function AICoachPage() {
 
       recognitionRef.current = recognition;
     }
-  }, []);
+
+    return () => {
+      window.speechSynthesis?.cancel();
+    };
+  }, [hasAccess]);
 
   const callGeminiAPI = async (prompt: string): Promise<string> => {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
@@ -271,6 +281,20 @@ function AICoachPage() {
       setLoading(false);
     }
   };
+
+  // 1. Loading State while checking subscription
+  if (subscriptionLoading) {
+    return (
+      <div className="flex h-64 items-center justify-center text-xs text-muted-foreground font-sans">
+        <Loader2 className="h-5 w-5 animate-spin text-primary mr-2" /> Checking access...
+      </div>
+    );
+  }
+
+  // 2. Paywall Guard: Block the entire page if trial expired & not premium
+  if (!hasAccess) {
+    return <PremiumLockedScreen featureName="NutriGuide AI Voice Coach" />;
+  }
 
   return (
     <div className="flex-1 flex flex-col w-full h-full min-h-[82vh] justify-between relative overflow-hidden font-sans">

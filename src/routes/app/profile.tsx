@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
@@ -18,6 +18,9 @@ import {
   AlertCircle,
   Target,
   UserCheck,
+  Clock,
+  ShieldCheck,
+  ShieldAlert,
 } from "lucide-react";
 
 export const Route = createFileRoute("/app/profile")({
@@ -32,8 +35,13 @@ export const Route = createFileRoute("/app/profile")({
 
 function ProfilePage() {
   const { user } = useAuth();
+  const searchParams: any = useSearch({ strict: false });
   const [profile, setProfile] = useState<any>(null);
   const [savedFlash, setSavedFlash] = useState(false);
+
+  // Trial & Subscription State
+  const [daysLeft, setDaysLeft] = useState<number>(60);
+  const [trialEndDate, setTrialEndDate] = useState<Date | null>(null);
 
   // Bio Editing States
   const [isEditingBio, setIsEditingBio] = useState(false);
@@ -48,7 +56,7 @@ function ProfilePage() {
     subscription: false,
   });
 
-  // Load theme directly from localStorage
+  // Theme State
   const [theme, setTheme] = useState<"light" | "dark" | "system">(
     () => (localStorage.getItem("nutrifit-theme") as any) || "system"
   );
@@ -60,6 +68,14 @@ function ProfilePage() {
   const [cardCvv, setCardCvv] = useState("");
   const [cardName, setCardName] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Auto-open modal if navigated with ?subscribe=true
+  useEffect(() => {
+    if (searchParams?.subscribe === "true" || searchParams?.subscribe === true) {
+      setShowUpgradeModal(true);
+      setOpenFolders((prev) => ({ ...prev, subscription: true }));
+    }
+  }, [searchParams]);
 
   const toggleFolder = (folderKey: string) => {
     setOpenFolders((prev) => ({ ...prev, [folderKey]: !prev[folderKey] }));
@@ -99,12 +115,23 @@ function ProfilePage() {
         full_name: user.user_metadata?.full_name || "User",
         daily_calorie_goal: 2000,
         daily_water_goal_l: 2.5,
+        subscription_tier: "trial",
       };
       const { data: createdProfile } = await supabase.from("profiles").insert(defaultData as any).select("*").single();
       p = createdProfile;
     }
 
     if (p) {
+      // Calculate 60-Day Trial Countdown
+      const now = new Date();
+      const startDate = new Date(p.created_at || now);
+      const calculatedEnd = new Date(startDate.getTime() + 60 * 24 * 60 * 60 * 1000);
+      setTrialEndDate(calculatedEnd);
+
+      const diffTime = calculatedEnd.getTime() - now.getTime();
+      const diffDays = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+      setDaysLeft(diffDays);
+
       let extractedCode = "+27";
       let extractedRaw = "";
 
@@ -130,7 +157,6 @@ function ProfilePage() {
     refresh();
   }, [user]);
 
-  // Handle Pencil Click -> Enable Edit Mode & Focus Input
   const handleEditBioClick = () => {
     setIsEditingBio(true);
     setTimeout(() => {
@@ -138,14 +164,9 @@ function ProfilePage() {
     }, 50);
   };
 
-  // Save Bio directly to Supabase
   const saveBio = async () => {
     if (!user || !profile) return;
-    await supabase
-      .from("profiles")
-      .update({ bio: profile.bio } as any)
-      .eq("id", user.id);
-
+    await supabase.from("profiles").update({ bio: profile.bio } as any).eq("id", user.id);
     setIsEditingBio(false);
     setBioFlash(true);
     setTimeout(() => setBioFlash(false), 2000);
@@ -195,6 +216,7 @@ function ProfilePage() {
     setTimeout(() => setSavedFlash(false), 1500);
   };
 
+  // Secure payment setup: Saves card on file & schedules first deduction when trial ends
   const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !cardNumber || !cardExpiry || !cardCvv) return;
@@ -203,8 +225,12 @@ function ProfilePage() {
     setTimeout(async () => {
       const cleanCard = cardNumber.replace(/\s+/g, "");
       const lastFour = cleanCard.slice(-4) || "4242";
-      const nextBilling = new Date();
-      nextBilling.setMonth(nextBilling.getMonth() + 1);
+
+      // If user is currently in trial, first deduction is after trial ends. If trial expired, deduct now.
+      const firstBilling = daysLeft > 0 && trialEndDate ? trialEndDate : new Date();
+      if (daysLeft === 0) {
+        firstBilling.setMonth(firstBilling.getMonth() + 1);
+      }
 
       await supabase
         .from("profiles")
@@ -213,7 +239,7 @@ function ProfilePage() {
           subscription_status: "active",
           card_last_four: lastFour,
           card_brand: cleanCard.startsWith("5") ? "Mastercard" : "Visa",
-          next_billing_date: nextBilling.toISOString(),
+          next_billing_date: firstBilling.toISOString(),
         } as any)
         .eq("id", user.id);
 
@@ -240,12 +266,13 @@ function ProfilePage() {
 
   const displayName = `${profile.first_name || ""} ${profile.last_name || ""}`.trim() || user?.email?.split("@")[0] || "User";
   const isPremium = profile.subscription_tier === "premium";
+  const isTrialActive = !isPremium && daysLeft > 0;
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-6 max-w-4xl mx-auto font-sans pb-12">
       
-      {/* Top Header Card */}
-      <section className="rounded-3xl border border-border bg-card p-6 shadow-sm">
+      {/* 1. TOP HEADER & 60-DAY COUNTDOWN CARD */}
+      <section className="rounded-3xl border border-border bg-card p-6 shadow-sm space-y-6">
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
           <div className="relative">
             <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary border-2 border-primary/20 shadow-inner">
@@ -261,9 +288,17 @@ function ProfilePage() {
           <div className="flex-1 text-center sm:text-left space-y-2 w-full">
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
               <h1 className="font-display text-2xl font-extrabold text-foreground">{displayName}</h1>
-              {isPremium && (
-                <span className="rounded-full bg-amber-500/20 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                  Premium Member
+              {isPremium ? (
+                <span className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                  <ShieldCheck className="h-3 w-3" /> Premium Active
+                </span>
+              ) : isTrialActive ? (
+                <span className="rounded-full bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                  <Clock className="h-3 w-3" /> 60-Day Free Trial
+                </span>
+              ) : (
+                <span className="rounded-full bg-rose-500/10 border border-rose-500/20 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                  <ShieldAlert className="h-3 w-3" /> Trial Expired
                 </span>
               )}
             </div>
@@ -284,7 +319,6 @@ function ProfilePage() {
                   }`}
                 />
                 
-                {/* Pencil / Check Icon Button */}
                 <button
                   type="button"
                   onClick={isEditingBio ? saveBio : handleEditBioClick}
@@ -295,7 +329,6 @@ function ProfilePage() {
                 </button>
               </div>
 
-              {/* Save Bio Button (Only shows when editing) */}
               {isEditingBio && (
                 <div className="flex items-center gap-2 justify-end animate-in fade-in">
                   <button
@@ -315,7 +348,6 @@ function ProfilePage() {
                 </div>
               )}
 
-              {/* Flash Notice */}
               {bioFlash && (
                 <p className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 animate-in fade-in">
                   ✓ Bio saved successfully!
@@ -324,9 +356,59 @@ function ProfilePage() {
             </div>
           </div>
         </div>
+
+        {/* 60-DAY COUNTDOWN BANNER */}
+        <div className="rounded-2xl border border-border bg-gradient-to-r from-emerald-500/10 via-card to-amber-500/10 p-4 sm:p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary">
+                Membership Period
+              </span>
+              <h3 className="font-display text-base font-extrabold text-foreground">
+                {isPremium
+                  ? "NutriFit Premium Active"
+                  : isTrialActive
+                  ? `${daysLeft} Days Remaining in Free Trial`
+                  : "Trial Expired — Free Access Active"}
+              </h3>
+            </div>
+            <div className="text-right">
+              <span className="text-2xl sm:text-3xl font-extrabold font-mono text-primary">
+                {isPremium ? "∞" : daysLeft}
+              </span>
+              <span className="text-[10px] text-muted-foreground block">Days Left</span>
+            </div>
+          </div>
+
+          <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
+            <div
+              className="h-full bg-primary transition-all duration-500"
+              style={{ width: `${isPremium ? 100 : (daysLeft / 60) * 100}%` }}
+            />
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-muted-foreground pt-1">
+            <p>
+              {isPremium
+                ? "Full access unlocked. Card will automatically charge on renewal."
+                : isTrialActive
+                ? "Enjoy full access. Workouts, Community & Nutrition logging remain free forever."
+                : "Free features (Workouts, Community & Logging) remain accessible forever."}
+            </p>
+            {!isPremium && (
+              <button
+                type="button"
+                onClick={() => setShowUpgradeModal(true)}
+                className="inline-flex items-center gap-1 font-bold text-amber-600 dark:text-amber-400 hover:underline cursor-pointer shrink-0"
+              >
+                <Sparkles className="h-3.5 w-3.5" /> Setup Auto-Deduct (R49/mo)
+              </button>
+            )}
+          </div>
+        </div>
       </section>
 
-      {/* WHATSAPP-STYLE SECTION FOLDERS */}
+      {/* 2. SECTION ACCORDIONS */}
       <div className="space-y-3">
         
         {/* FOLDER 1: Personal Information */}
@@ -334,7 +416,7 @@ function ProfilePage() {
           <button
             type="button"
             onClick={() => toggleFolder("personal")}
-            className="flex w-full items-center justify-between p-5 text-left font-bold text-foreground hover:bg-muted/50 transition"
+            className="flex w-full items-center justify-between p-5 text-left font-bold text-foreground hover:bg-muted/50 transition cursor-pointer"
           >
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
@@ -432,7 +514,7 @@ function ProfilePage() {
           <button
             type="button"
             onClick={() => toggleFolder("fitness")}
-            className="flex w-full items-center justify-between p-5 text-left font-bold text-foreground hover:bg-muted/50 transition"
+            className="flex w-full items-center justify-between p-5 text-left font-bold text-foreground hover:bg-muted/50 transition cursor-pointer"
           >
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-500">
@@ -543,7 +625,7 @@ function ProfilePage() {
           <button
             type="button"
             onClick={() => toggleFolder("theme")}
-            className="flex w-full items-center justify-between p-5 text-left font-bold text-foreground hover:bg-muted/50 transition"
+            className="flex w-full items-center justify-between p-5 text-left font-bold text-foreground hover:bg-muted/50 transition cursor-pointer"
           >
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-500">
@@ -609,7 +691,7 @@ function ProfilePage() {
           <button
             type="button"
             onClick={() => toggleFolder("subscription")}
-            className="flex w-full items-center justify-between p-5 text-left font-bold text-foreground hover:bg-muted/50 transition"
+            className="flex w-full items-center justify-between p-5 text-left font-bold text-foreground hover:bg-muted/50 transition cursor-pointer"
           >
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-500">
@@ -617,7 +699,7 @@ function ProfilePage() {
               </div>
               <div>
                 <h3 className="text-sm font-bold">Billing &amp; Premium Subscription</h3>
-                <p className="text-[11px] font-normal text-muted-foreground">Manage your monthly membership and debit card</p>
+                <p className="text-[11px] font-normal text-muted-foreground">Manage your 60-day trial, auto-deductions &amp; payment method</p>
               </div>
             </div>
             {openFolders.subscription ? <ChevronDown className="h-5 w-5 text-muted-foreground" /> : <ChevronRight className="h-5 w-5 text-muted-foreground" />}
@@ -627,12 +709,14 @@ function ProfilePage() {
             <div className="border-t border-border p-6 space-y-4 animate-in fade-in">
               <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-2">
                 <p className="text-xs font-bold text-amber-600 dark:text-amber-400">
-                  Upgrade to unlock unlimited AI Coach, custom meal plans, and advanced tracking.
+                  NutriFit Premium (R49.00 / month)
                 </p>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
                   {isPremium
-                    ? `Active Membership — Renews automatically on ${profile.next_billing_date ? new Date(profile.next_billing_date).toLocaleDateString() : "next month"} (R49.00/month).`
-                    : "R49.00 / month — Auto-renews monthly."}
+                    ? `Active Membership — Next automatic debit of R49.00 on ${profile.next_billing_date ? new Date(profile.next_billing_date).toLocaleDateString() : "next cycle"}. Card on file: ${profile.card_brand || "Card"} ending in ${profile.card_last_four || "••••"}.`
+                    : isTrialActive
+                    ? `You are currently on your 60-Day Free Trial (${daysLeft} days left). Enter your card to ensure uninterrupted AI & Recipe access after the trial ends.`
+                    : "Your 60-day trial has ended. Set up your monthly subscription to reactivate NutriGuide AI and exclusive Recipes."}
                 </p>
               </div>
 
@@ -643,7 +727,7 @@ function ProfilePage() {
                     onClick={handleCancelSubscription}
                     className="cursor-pointer rounded-xl border border-border bg-card px-4 py-2.5 text-xs font-semibold text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition"
                   >
-                    Cancel Subscription
+                    Cancel Monthly Subscription
                   </button>
                 ) : (
                   <button
@@ -651,7 +735,7 @@ function ProfilePage() {
                     onClick={() => setShowUpgradeModal(true)}
                     className="cursor-pointer inline-flex items-center gap-2 rounded-xl bg-amber-500 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-amber-600 transition"
                   >
-                    <Sparkles className="h-4 w-4" /> Upgrade to Premium (R49/mo)
+                    <Sparkles className="h-4 w-4" /> {daysLeft > 0 ? "Save Card for Auto-Deduct (R49/mo)" : "Reactivate Premium (R49/mo)"}
                   </button>
                 )}
               </div>
@@ -661,30 +745,33 @@ function ProfilePage() {
 
       </div>
 
-      {/* Monthly Premium Subscription Payment Modal */}
+      {/* 3. PAYMENT SETUP MODAL (AUTO-DEDUCT POST TRIAL) */}
       {showUpgradeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in">
           <div className="w-full max-w-md overflow-hidden rounded-3xl border border-border bg-card p-6 shadow-2xl space-y-5">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-amber-500" />
-                <h3 className="font-display text-lg font-bold text-foreground">NutriFit Premium</h3>
+                <h3 className="font-display text-lg font-bold text-foreground">NutriFit Premium Setup</h3>
               </div>
               <button
                 type="button"
                 onClick={() => setShowUpgradeModal(false)}
-                className="text-xs font-bold text-muted-foreground hover:text-foreground"
+                className="text-xs font-bold text-muted-foreground hover:text-foreground cursor-pointer"
               >
                 ✕ Close
               </button>
             </div>
 
             <div className="rounded-2xl bg-amber-500/10 p-4 border border-amber-500/20 text-xs space-y-2">
-              <p className="font-bold text-amber-600 dark:text-amber-400">R49.00 / month (Auto-renews monthly)</p>
-              <ul className="space-y-1 text-muted-foreground">
-                <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-500" /> Unlimited AI Coach Voice &amp; Chat</li>
-                <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-500" /> Custom SA Meal Planning</li>
-                <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-500" /> Cancel anytime with 1-click</li>
+              <p className="font-bold text-amber-600 dark:text-amber-400">
+                R49.00 / month {daysLeft > 0 ? `(First deduction in ${daysLeft} days)` : "(Auto-renews monthly)"}
+              </p>
+              <ul className="space-y-1 text-muted-foreground text-[11px]">
+                <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-500" /> Free for first 60 days (No charge today)</li>
+                <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-500" /> Unlimited NutriGuide AI voice coaching</li>
+                <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-500" /> Full access to verified recipes catalog</li>
+                <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-500" /> 1-click cancellation anytime in Profile</li>
               </ul>
             </div>
 
@@ -738,15 +825,19 @@ function ProfilePage() {
 
               <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground pt-1">
                 <AlertCircle className="h-3.5 w-3.5 text-emerald-500" />
-                <span>Secured with 256-bit SSL encryption. Monthly debit order.</span>
+                <span>Encrypted with 256-bit bank security. Cancel anytime.</span>
               </div>
 
               <button
                 type="submit"
                 disabled={isProcessing}
-                className="w-full cursor-pointer rounded-2xl bg-amber-500 py-3 text-sm font-bold text-white shadow-md hover:bg-amber-600 transition disabled:opacity-50 mt-2"
+                className="w-full cursor-pointer rounded-2xl bg-amber-500 py-3 text-xs font-bold text-white shadow-md hover:bg-amber-600 transition disabled:opacity-50 mt-2"
               >
-                {isProcessing ? "Authorizing Payment..." : "Confirm & Subscribe (R49.00/mo)"}
+                {isProcessing
+                  ? "Authorizing Card..."
+                  : daysLeft > 0
+                  ? `Save Card (Deduct R49/mo after ${daysLeft} days)`
+                  : "Authorize & Subscribe (R49.00/mo)"}
               </button>
             </form>
           </div>
@@ -766,3 +857,5 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     </label>
   );
 }
+
+export default ProfilePage;

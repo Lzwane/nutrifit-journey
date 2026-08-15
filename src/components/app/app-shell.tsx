@@ -1,4 +1,5 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { 
   Home, 
   Utensils, 
@@ -18,22 +19,88 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
 
+  // State to hold dynamically remembered last visited URLs per section
+  const [savedPaths, setSavedPaths] = useState<{ [key: string]: string }>({});
+
+  // 1. On route change, record the exact current sub-path for the active section
+  useEffect(() => {
+    const path = location.pathname;
+
+    const sections = ["recipes", "nutrition", "workouts", "coach", "community", "profile"];
+    for (const section of sections) {
+      if (path.startsWith(`/app/${section}`)) {
+        sessionStorage.setItem(`nutrifit_last_path_${section}`, path);
+        setSavedPaths((prev) => ({ ...prev, [section]: path }));
+        break;
+      }
+    }
+  }, [location.pathname]);
+
+  // Helper to retrieve the latest remembered path or fallback to base
+  const getSectionPath = (section: string, defaultPath: string) => {
+    if (typeof window !== "undefined") {
+      const stored = sessionStorage.getItem(`nutrifit_last_path_${section}`);
+      if (stored) return stored;
+    }
+    return savedPaths[section] || defaultPath;
+  };
+
   const navItems = [
     { label: "Home", href: "/app", icon: Home, exact: true },
-    { label: "Recipes", href: "/app/recipes", icon: ChefHat },
-    { label: "Nutrition", href: "/app/nutrition", icon: Utensils },
-    { label: "Workouts", href: "/app/workouts", icon: Dumbbell },
-    { label: "NutriGuide AI", href: "/app/coach", icon: Bot },
-    { label: "Community", href: "/app/community", icon: Users },
-    { label: "Profile", href: "/app/profile", icon: User },
+    { 
+      label: "Recipes", 
+      href: getSectionPath("recipes", "/app/recipes"), 
+      icon: ChefHat,
+      section: "recipes"
+    },
+    { 
+      label: "Nutrition", 
+      href: getSectionPath("nutrition", "/app/nutrition"), 
+      icon: Utensils,
+      section: "nutrition"
+    },
+    { 
+      label: "Workouts", 
+      href: getSectionPath("workouts", "/app/workouts"), 
+      icon: Dumbbell,
+      section: "workouts"
+    },
+    { 
+      label: "NutriGuide AI", 
+      href: getSectionPath("coach", "/app/coach"), 
+      icon: Bot,
+      section: "coach"
+    },
+    { 
+      label: "Community", 
+      href: getSectionPath("community", "/app/community"), 
+      icon: Users,
+      section: "community"
+    },
+    { 
+      label: "Profile", 
+      href: getSectionPath("profile", "/app/profile"), 
+      icon: User,
+      section: "profile"
+    },
   ];
 
-  const isActive = (href: string, exact?: boolean) => {
-    if (exact) return location.pathname === href || location.pathname === "/app/";
-    return location.pathname.startsWith(href);
+  const isActive = (item: typeof navItems[0]) => {
+    if (item.exact) {
+      return location.pathname === "/app" || location.pathname === "/app/";
+    }
+    if (item.section) {
+      return location.pathname.startsWith(`/app/${item.section}`);
+    }
+    return location.pathname.startsWith(item.href);
   };
 
   const handleSignOut = async () => {
+    // Clear navigation history memory on logout
+    if (typeof window !== "undefined") {
+      const sections = ["recipes", "nutrition", "workouts", "coach", "community", "profile"];
+      sections.forEach((s) => sessionStorage.removeItem(`nutrifit_last_path_${s}`));
+    }
     await supabase.auth.signOut();
     navigate({ to: "/auth" });
   };
@@ -63,12 +130,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <nav className="space-y-1">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const active = isActive(item.href, item.exact);
+              const active = isActive(item);
               return (
                 <Link
-                  key={item.href}
+                  key={item.label}
                   to={item.href}
-                  className={`flex items-center space-x-3 px-3.5 py-2.5 lg:px-4 lg:py-3 rounded-xl text-xs font-bold transition ${
+                  className={`flex items-center space-x-3 px-3.5 py-2.5 lg:px-4 lg:py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
                     active
                       ? "bg-primary text-primary-foreground shadow-sm"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -121,10 +188,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-md border-t border-border px-1 py-1.5 flex items-center justify-around shadow-lg">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const active = isActive(item.href, item.exact);
+          const active = isActive(item);
           return (
             <Link
-              key={item.href}
+              key={item.label}
               to={item.href}
               className={`flex flex-1 flex-col items-center justify-center py-1 px-0.5 rounded-xl transition cursor-pointer min-w-0 ${
                 active
