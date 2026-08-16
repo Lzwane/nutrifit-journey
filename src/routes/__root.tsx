@@ -12,7 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 import appCss from "../styles.css?url";
 import nutrifitLogo from "@/assets/Nutrifit logo.jpeg";
-import { BetwayInstallBanner } from "@/components/betway-install-banner";
+import { FullAppInstallGate } from "@/components/full-app-install-gate";
 
 const themeScript = `
   (function() {
@@ -54,12 +54,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <HeadContent />
       </head>
-      <body>
+      <body suppressHydrationWarning>
         {children}
         <Scripts />
       </body>
@@ -73,6 +73,17 @@ function RootComponent() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [checkingAuth, setCheckingAuth] = useState(true);
 
+  // Register Service Worker for PWA
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker
+        .register("/sw.js")
+        .then(() => console.log("PWA Service Worker registered"))
+        .catch((err) => console.error("Service worker registration error:", err));
+    }
+  }, []);
+
+  // Theme Sync on Client
   useEffect(() => {
     const savedTheme = localStorage.getItem("nutrifit-theme");
     const root = document.documentElement;
@@ -87,6 +98,7 @@ function RootComponent() {
     }
   }, []);
 
+  // Route Authentication Guard
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
@@ -127,9 +139,9 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* BETWAY-STYLE DIRECT APP DOWNLOAD BANNER */}
-      <BetwayInstallBanner />
-      <Outlet />
+      <FullAppInstallGate>
+        <Outlet />
+      </FullAppInstallGate>
     </QueryClientProvider>
   );
 }

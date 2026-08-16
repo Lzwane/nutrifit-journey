@@ -15,30 +15,30 @@ export const Route = createFileRoute("/app/workouts/")({
 });
 
 function WorkoutsPage() {
-  const [workouts, setWorkouts] = useState<Workout[]>([]);
+  const [workouts, setWorkouts] = useState<Workout[]>(FEATURED_YOUTUBE_WORKOUTS);
   const [cat, setCat] = useState<string>("all");
   const [diff, setDiff] = useState<string>("all");
 
   useEffect(() => {
-  async function loadWorkouts() {
-    try {
-      const { data, error } = await supabase
-        .from("workouts")
-        .select("*")
-        .order("title");
+    async function loadWorkouts() {
+      try {
+        const { data, error } = await supabase
+          .from("workouts")
+          .select("*")
+          .order("title");
 
-      if (!error && data && data.length > 0) {
-        setWorkouts(data as Workout[]);
-      } else {
+        if (!error && data && data.length > 0) {
+          setWorkouts(data as Workout[]);
+        } else {
+          setWorkouts(FEATURED_YOUTUBE_WORKOUTS);
+        }
+      } catch {
         setWorkouts(FEATURED_YOUTUBE_WORKOUTS);
       }
-    } catch {
-      setWorkouts(FEATURED_YOUTUBE_WORKOUTS);
     }
-  }
 
-  loadWorkouts();
-}, []);
+    loadWorkouts();
+  }, []);
 
   const filtered = useMemo(
     () =>
@@ -49,7 +49,7 @@ function WorkoutsPage() {
   );
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto font-sans">
+    <div className="space-y-6 max-w-7xl mx-auto font-sans pb-10">
       {/* HEADER WITH LIFETIME FREE BADGE */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-border/60">
         <div>
@@ -73,7 +73,7 @@ function WorkoutsPage() {
           label="Category"
           value={cat}
           onChange={setCat}
-          options={["all", "hiit", "cardio", "strength", "full_body"]}
+          options={["all", "full_body", "strength", "hiit"]}
         />
         <FilterGroup
           label="Level"

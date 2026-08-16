@@ -1,8 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/lib/auth";
-import { useSubscription } from "@/lib/use-subscription";
-import { PremiumLockedScreen } from "@/components/app/premium-guard";
+import { useSubscription } from "@/hooks/use-subscription";
 import {
   Send,
   Volume2,
@@ -14,6 +13,10 @@ import {
   MessageSquare,
   Radio,
   Mic,
+  Lock,
+  ShieldCheck,
+  Check,
+  ArrowRight,
 } from "lucide-react";
 
 export const Route = createFileRoute("/app/coach")({
@@ -59,7 +62,12 @@ function speakText(text: string, onEnd?: () => void) {
 
 function AICoachPage() {
   const { user } = useAuth();
-  const { hasAccess, loading: subscriptionLoading } = useSubscription();
+  const sub = useSubscription();
+
+  const isPremium = sub.isPremium || (sub as any).tier === "premium";
+  const isTrialActive = sub.isTrialActive ?? (sub.daysLeft > 0 && !isPremium);
+  const hasAccess = isPremium || isTrialActive;
+  const subscriptionLoading = sub.loading;
 
   const [activeTab, setActiveTab] = useState<"voice" | "chat">("voice");
 
@@ -115,7 +123,7 @@ function AICoachPage() {
       };
 
       recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
+        const transcript = event.results[0]?.[0]?.transcript;
         if (transcript) {
           transcriptBufferRef.current = transcript;
         }
@@ -195,7 +203,10 @@ function AICoachPage() {
     }
 
     const data = await response.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || "I couldn't process that question. Try asking again!";
+    return (
+      data.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "I couldn't process that question. Try asking again!"
+    );
   };
 
   const handleHandsFreeQuery = async (userPrompt: string) => {
@@ -291,21 +302,64 @@ function AICoachPage() {
     );
   }
 
-  // 2. Paywall Guard: Block the entire page if trial expired & not premium
+  // 2. Paywall Guard: Block features on Free Tier (when trial has expired and user is not on Premium)
   if (!hasAccess) {
-    return <PremiumLockedScreen featureName="NutriGuide AI Voice Coach" />;
+    return (
+      <div className="flex-1 flex items-center justify-center p-4 font-sans min-h-[70vh]">
+        <div className="max-w-md w-full text-center space-y-6 rounded-3xl border border-border bg-card p-6 sm:p-8 shadow-xl animate-in fade-in">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-amber-500/10 border border-amber-500/20 text-amber-500 shadow-inner">
+            <Lock className="h-8 w-8" />
+          </div>
+
+          <div className="space-y-2">
+            <span className="rounded-full bg-amber-500/10 border border-amber-500/20 px-3 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-500">
+              Premium Feature
+            </span>
+            <h2 className="font-display text-2xl font-extrabold text-foreground">
+              NutriGuide AI Voice Coach
+            </h2>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Your 60-day free trial has concluded and your account is on the Free Tier. Workouts and manual tracking remain free forever. Unlock unlimited real-time AI voice and nutrition guidance for R49.00/month.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-muted/30 p-4 text-left text-xs space-y-2 text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <Check className="h-4 w-4 text-emerald-500 shrink-0" />
+              <span>Unlimited live hands-free conversational AI</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Check className="h-4 w-4 text-emerald-500 shrink-0" />
+              <span>Verified macro and meal calorie breakdown</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Check className="h-4 w-4 text-emerald-500 shrink-0" />
+              <span>Cancel or pause subscription anytime</span>
+            </div>
+          </div>
+
+          <Link
+            to="/app/profile"
+            search={{ subscribe: "true" }}
+            className="w-full flex items-center justify-center gap-2 rounded-2xl bg-amber-500 hover:bg-amber-600 active:scale-95 py-3.5 text-xs font-bold text-white shadow-md transition uppercase tracking-wider cursor-pointer"
+          >
+            <Sparkles className="h-4 w-4" />
+            <span>Unlock Premium (R49.00 / mo)</span>
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="flex-1 flex flex-col w-full h-full min-h-[82vh] justify-between relative overflow-hidden font-sans">
-      {/* RESPONSIVE HEADER: RESTORED DETAILED HEADER ON TABLET/DESKTOP, CLEAN & UNCLUTTERED ON MOBILE */}
+      {/* RESPONSIVE HEADER */}
       <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-border/60">
-        {/* MOBILE ONLY TITLE */}
         <h1 className="font-display text-lg font-extrabold text-foreground tracking-tight md:hidden">
           NutriGuide AI
         </h1>
 
-        {/* DESKTOP & TABLET RESTORED HEADER */}
         <div className="hidden md:flex items-center gap-3">
           <div
             className="flex h-10 w-10 items-center justify-center rounded-2xl shadow-inner border border-emerald-500/20 shrink-0"
@@ -356,7 +410,7 @@ function AICoachPage() {
         </div>
       </div>
 
-      {/* VIEW 1: FULL-PAGE CHATGPT / GEMINI LIVE VOICE MODE */}
+      {/* VIEW 1: LIVE VOICE MODE */}
       {activeTab === "voice" ? (
         <div className="flex-1 flex flex-col items-center justify-between py-6 sm:py-8 px-4 text-center relative overflow-hidden my-auto w-full">
           {/* AMBIENT BACKGROUND GLOW */}
@@ -444,7 +498,7 @@ function AICoachPage() {
             </div>
           </div>
 
-          {/* FLOATING ACTION BAR AT BOTTOM */}
+          {/* ACTION BUTTON */}
           <div className="relative z-10 w-full max-w-xs pt-2">
             <button
               type="button"
@@ -468,7 +522,7 @@ function AICoachPage() {
           </div>
         </div>
       ) : (
-        /* VIEW 2: EXPANDED TEXT CHAT FEED */
+        /* VIEW 2: TEXT CHAT FEED */
         <div className="flex-1 flex flex-col justify-between w-full mx-auto pt-4 space-y-4">
           <div className="flex-1 overflow-y-auto space-y-4 pr-1">
             {messages.map((m) => (

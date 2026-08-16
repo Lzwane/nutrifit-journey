@@ -1,7 +1,9 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { NutriFitLogo } from "@/components/app/logo";
+import { Download } from "lucide-react";
+import { InstallGuideModal } from "@/components/install-guide-modal";
 
 const ADMIN_EMAIL = "admin@nutrifit.co.za";
 
@@ -22,6 +24,33 @@ function AuthPage() {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
+  // Install Modal & Standalone Detection
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
+  const [isStandaloneApp, setIsStandaloneApp] = useState(true);
+
+  useEffect(() => {
+    const isStandalone =
+      typeof window !== "undefined" &&
+      (window.matchMedia("(display-mode: standalone)").matches ||
+        (window.navigator as any).standalone === true ||
+        document.referrer.includes("android-app://"));
+
+    setIsStandaloneApp(isStandalone);
+
+    // Auto-show on first visit in a web browser
+    if (!isStandalone) {
+      const hasSeen = localStorage.getItem("nutrifit_install_seen");
+      if (!hasSeen) {
+        setShowInstallGuide(true);
+      }
+    }
+  }, []);
+
+  const handleCloseGuide = () => {
+    localStorage.setItem("nutrifit_install_seen", "true");
+    setShowInstallGuide(false);
+  };
 
   const switchMode = (newMode: AuthMode) => {
     setMode(newMode);
@@ -45,7 +74,6 @@ function AuthPage() {
         if (error) throw error;
         setSuccessMsg("Password reset email sent! Check your inbox.");
       } else if (mode === "signup") {
-        // Prevent registering as the reserved admin email via standard signup
         if (cleanEmail === ADMIN_EMAIL) {
           setErrorMsg("This email is reserved for system administration. Please sign in instead.");
           setLoading(false);
@@ -71,7 +99,6 @@ function AuthPage() {
           setSuccessMsg("Account created! Please check your email to confirm.");
         }
       } else {
-        // Standard & Admin Sign In
         const { data, error } = await supabase.auth.signInWithPassword({
           email: cleanEmail,
           password,
@@ -82,7 +109,6 @@ function AuthPage() {
         const isEmailAdmin = data.user?.email?.toLowerCase().trim() === ADMIN_EMAIL;
         const isRoleAdmin = data.user?.app_metadata?.role === "admin";
 
-        // Redirect Admin directly to /admin, normal users to /app
         if (data.user && (isEmailAdmin || isRoleAdmin)) {
           navigate({ to: "/admin" });
         } else {
@@ -113,7 +139,28 @@ function AuthPage() {
   };
 
   return (
-    <div className="flex min-h-[100dvh] flex-col items-center justify-between bg-background px-4 py-10 sm:py-16">
+    <div className="relative flex min-h-[100dvh] flex-col items-center justify-between bg-background px-4 py-10 sm:py-16">
+      
+      {/* SMALL TOP-RIGHT INSTALL APP BUTTON (Only visible on web browser, hidden in app) */}
+      {!isStandaloneApp && (
+        <div className="absolute top-4 right-4 z-20">
+          <button
+            type="button"
+            onClick={() => setShowInstallGuide(true)}
+            className="flex items-center gap-1.5 rounded-2xl bg-primary/10 hover:bg-primary/20 border border-primary/30 px-3 py-1.5 text-xs font-bold text-primary shadow-xs transition cursor-pointer"
+          >
+            <Download className="h-3.5 w-3.5" />
+            <span>Install App</span>
+          </button>
+        </div>
+      )}
+
+      {/* FULL APP INSTALL GUIDE MODAL */}
+      <InstallGuideModal
+        isOpen={showInstallGuide}
+        onClose={handleCloseGuide}
+      />
+
       <div className="hidden sm:block" />
 
       <div className="my-auto w-full max-w-md space-y-7 rounded-3xl border border-border bg-card p-6 shadow-sm sm:p-10">

@@ -21,29 +21,162 @@ export interface WorkoutSegment {
 }
 
 const WORKOUT_SEGMENTS: Record<string, WorkoutSegment[]> = {
-  "25-min-full-body-hiit": [
-    { id: "s1", name: "Warm-Up & Joint Mobility", timestampSeconds: 0, duration: "3 min" },
-    { id: "s2", name: "High Knees & Low-Impact Cardio", timestampSeconds: 180, duration: "4 min" },
-    { id: "s3", name: "Bodyweight Squats & Leg Toning", timestampSeconds: 420, duration: "5 min" },
-    { id: "s4", name: "Standing Ab Crunches & Core", timestampSeconds: 720, duration: "5 min" },
-    { id: "s5", name: "Full Body Burner Interval", timestampSeconds: 1020, duration: "5 min" },
-    { id: "s6", name: "Cool-Down & Static Recovery", timestampSeconds: 1320, duration: "3 min" },
+  // 1. BullyJuice 20 Min
+  "20-min-beginner-full-body-bullyjuice": [
+    { id: "bj1", name: "Jumping Jacks & In-Place Skips", timestampSeconds: 24, duration: "1 min" },
+    { id: "bj2", name: "Air Squats & Push-Ups", timestampSeconds: 85, duration: "1 min" },
+    { id: "bj3", name: "Elbow Planks & Supermans", timestampSeconds: 145, duration: "1 min" },
+    { id: "bj4", name: "Roof Raises & Squat Calf Raises", timestampSeconds: 235, duration: "1.5 min" },
+    { id: "bj5", name: "Side Lunges & Pike Presses", timestampSeconds: 325, duration: "1.5 min" },
+    { id: "bj6", name: "Jump Rope & Upright Planks", timestampSeconds: 415, duration: "2 min" },
+    { id: "bj7", name: "Fire Hydrants & Plank Ups", timestampSeconds: 595, duration: "2 min" },
+    { id: "bj8", name: "Knee Strikes & Burpee Finisher", timestampSeconds: 805, duration: "2 min" },
   ],
-  "30-min-fat-burn-abs-intermediate": [
-    { id: "i1", name: "Dynamic Cardio Warm-Up", timestampSeconds: 0, duration: "3 min" },
-    { id: "i2", name: "Squat Jumps & Speed Skaters", timestampSeconds: 180, duration: "6 min" },
-    { id: "i3", name: "Plank Jacks & Mountain Climbers", timestampSeconds: 540, duration: "6 min" },
-    { id: "i4", name: "Standing Core & Oblique Crunch", timestampSeconds: 900, duration: "6 min" },
-    { id: "i5", name: "Full Body Burner Sprint", timestampSeconds: 1260, duration: "6 min" },
-    { id: "i6", name: "Full Body Cool-Down Stretch", timestampSeconds: 1620, duration: "4 min" },
+
+  // 2. Growingannanas 25 Min HIIT
+  "25-min-full-body-hiit-growingannanas": [
+    { id: "ga1", name: "Dynamic Warm-Up & Joint Mobility", timestampSeconds: 0, duration: "3 min" },
+    { id: "ga2", name: "Low-Impact Cardio & Air Squats", timestampSeconds: 180, duration: "4 min" },
+    { id: "ga3", name: "Standing Core & Obliques", timestampSeconds: 420, duration: "5 min" },
+    { id: "ga4", name: "Upper Body Mat Flow & Planks", timestampSeconds: 720, duration: "5 min" },
+    { id: "ga5", name: "Full Body Calorie Burner", timestampSeconds: 1020, duration: "5 min" },
+    { id: "ga6", name: "Cool-Down Stretch & Recovery", timestampSeconds: 1440, duration: "3 min" },
   ],
-  "45-min-extreme-hiit-advanced": [
-    { id: "a1", name: "Dynamic Warm-Up & Mobility", timestampSeconds: 0, duration: "5 min" },
-    { id: "a2", name: "Plyometric Cardio & Jump Intervals", timestampSeconds: 300, duration: "10 min" },
-    { id: "a3", name: "Upper Body & Core Burner", timestampSeconds: 900, duration: "10 min" },
-    { id: "a4", name: "Lower Body Explosive Power", timestampSeconds: 1500, duration: "10 min" },
-    { id: "a5", name: "Final Full Body Finisher", timestampSeconds: 2100, duration: "8 min" },
-    { id: "a6", name: "Full Body Recovery Stretch", timestampSeconds: 2580, duration: "5 min" },
+
+  // 3. Roberta's Gym 30 Min
+  "30-min-beginner-full-body-robertas-gym": [
+    { id: "rg1", name: "Arm Crossovers & Arm Circles", timestampSeconds: 0, duration: "2 min" },
+    { id: "rg2", name: "Lateral Steps & Side Bends", timestampSeconds: 105, duration: "3 min" },
+    { id: "rg3", name: "Hip Swirls & Knee Drives", timestampSeconds: 240, duration: "2 min" },
+    { id: "rg4", name: "Step Back Jacks & Lateral Circles", timestampSeconds: 365, duration: "3 min" },
+    { id: "rg5", name: "Diagonal Abs & Tiny Jacks", timestampSeconds: 535, duration: "3.5 min" },
+    { id: "rg6", name: "Leg Kicks, Windmills & Glute Bridges", timestampSeconds: 740, duration: "5 min" },
+    { id: "rg7", name: "Squats, Punches & Cool Down", timestampSeconds: 1060, duration: "5 min" },
+  ],
+
+  // 4. Rowan Row 30 Min
+  "30-min-full-body-with-warmup-rowan-row": [
+    { id: "rr1", name: "Section 1: Full Body Mobility Warm-Up", timestampSeconds: 0, duration: "6 min" },
+    { id: "rr2", name: "Section 2: Upper Body Strength Flow", timestampSeconds: 360, duration: "6 min" },
+    { id: "rr3", name: "Section 3: Lower Body & Glute Burn", timestampSeconds: 720, duration: "6 min" },
+    { id: "rr4", name: "Section 4: Core & Abdominals", timestampSeconds: 1080, duration: "6 min" },
+    { id: "rr5", name: "Section 5: High Intensity HIIT Finisher", timestampSeconds: 1440, duration: "5 min" },
+    { id: "rr6", name: "Section 6: Post-Workout Stretch", timestampSeconds: 1740, duration: "3 min" },
+  ],
+
+  // 5. Move With Nicole 30 Min Pilates
+  "30-min-full-body-pilates-nicole": [
+    { id: "mn1", name: "Seated Spine & Lateral Stretches", timestampSeconds: 0, duration: "3 min" },
+    { id: "mn2", name: "Imprint Spine & Tabletop Toe Taps", timestampSeconds: 165, duration: "2 min" },
+    { id: "mn3", name: "The Pilates Hundreds", timestampSeconds: 280, duration: "1 min" },
+    { id: "mn4", name: "Roll-Ups & Single Leg Glute Bridges", timestampSeconds: 335, duration: "3.5 min" },
+    { id: "mn5", name: "Double Leg Stretch & Criss-Cross", timestampSeconds: 545, duration: "4 min" },
+    { id: "mn6", name: "Side Plank Leg Lifts & Glute Burn", timestampSeconds: 790, duration: "9.5 min" },
+    { id: "mn7", name: "Squats, Push-Ups & Pigeon Stretches", timestampSeconds: 1365, duration: "8 min" },
+  ],
+
+  // 6. Juice & Toya 30 Min Bodyweight Strength
+  "30-min-bodyweight-strength-juice-toya": [
+    { id: "jt1", name: "Dynamic Full Body Warm-Up", timestampSeconds: 0, duration: "2 min" },
+    { id: "jt2", name: "Lower Body Strength & Isometric Holds", timestampSeconds: 120, duration: "8 min" },
+    { id: "jt3", name: "Push-Up & Upper Body Endurance", timestampSeconds: 600, duration: "8 min" },
+    { id: "jt4", name: "Core Stability & Isometric Planks", timestampSeconds: 1080, duration: "8 min" },
+    { id: "jt5", name: "Dynamic Full Body Burner", timestampSeconds: 1560, duration: "6 min" },
+    { id: "jt6", name: "Post-Workout Cool Down & Stretch", timestampSeconds: 1920, duration: "3 min" },
+  ],
+
+  // 7. TIFF x DAN 25 Min Extreme HIIT
+  "25-min-extreme-full-body-tiff-dan": [
+    { id: "td1", name: "Air Squats & Jump Squats", timestampSeconds: 0, duration: "1.5 min" },
+    { id: "td2", name: "Shoulder Taps & Push-Up Taps", timestampSeconds: 85, duration: "1.5 min" },
+    { id: "td3", name: "Static Lunges & Lunge Hops", timestampSeconds: 165, duration: "1.5 min" },
+    { id: "td4", name: "Plank Toe Taps & Blast Off Push Ups", timestampSeconds: 245, duration: "1.5 min" },
+    { id: "td5", name: "Prayer Crunches & Lean Back Pulses", timestampSeconds: 325, duration: "6.5 min" },
+    { id: "td6", name: "Scissor Kicks & Rear Lunge Knee Drives", timestampSeconds: 725, duration: "8 min" },
+    { id: "td7", name: "In & Out Squats & Burpee Finishers", timestampSeconds: 1205, duration: "7 min" },
+    { id: "td8", name: "Full Body Cool Down & Stretch", timestampSeconds: 1620, duration: "4 min" },
+  ],
+
+  // 8. Growingannanas 30 Min Killer HIIT
+  "30-min-killer-hiit-growingannanas": [
+    { id: "gk1", name: "Warm-Up (Butt Kicks & Overhead Squats)", timestampSeconds: 0, duration: "6 min" },
+    { id: "gk2", name: "Round 1: Squat Jumps & Mountain Climbers", timestampSeconds: 365, duration: "8 min" },
+    { id: "gk3", name: "Round 2: Push Up Variations & Plyo Lunges", timestampSeconds: 855, duration: "1 min" },
+    { id: "gk4", name: "Round 3: Jackknives & Core Isolation", timestampSeconds: 910, duration: "8.5 min" },
+    { id: "gk5", name: "Advanced HIIT Finisher & High Heart-Rate", timestampSeconds: 1415, duration: "7 min" },
+    { id: "gk6", name: "Deep Recovery & Full Body Cool Down", timestampSeconds: 1850, duration: "4.5 min" },
+  ],
+
+  // 9. Rowan Row 45 Min Ultimate
+  "45-min-ultimate-full-body-rowan-row": [
+    { id: "ru1", name: "Section 1: Joint Mobility & Dynamic Warm Up", timestampSeconds: 0, duration: "6 min" },
+    { id: "ru2", name: "Section 2: Lower Body (Sumo Squats & Lunges)", timestampSeconds: 365, duration: "8.5 min" },
+    { id: "ru3", name: "Section 3: Upper Body (Pikes & Supermans)", timestampSeconds: 870, duration: "8.5 min" },
+    { id: "ru4", name: "Section 4: Core & Obliques (V-Ups & Bicycles)", timestampSeconds: 1365, duration: "8.5 min" },
+    { id: "ru5", name: "Section 5: High Intensity HIIT Finisher", timestampSeconds: 1870, duration: "8.5 min" },
+    { id: "ru6", name: "Section 6: Post-Workout Stretch & Recovery", timestampSeconds: 2385, duration: "7 min" },
+  ],
+
+  // 10. Juice & Toya 30 Min Dumbbell Advanced
+  "30-min-advanced-dumbbell-juice-toya": [
+    { id: "jd1", name: "Warm-Up & Dynamic Stretching", timestampSeconds: 0, duration: "2.5 min" },
+    { id: "jd2", name: "Group 1: Upper Body Strength Compounds", timestampSeconds: 165, duration: "8.5 min" },
+    { id: "jd3", name: "Group 2: Lower Body Dumbbell Complexes", timestampSeconds: 685, duration: "8.5 min" },
+    { id: "jd4", name: "Group 3: Full Body Dynamic Conditioning", timestampSeconds: 1175, duration: "8.5 min" },
+    { id: "jd5", name: "Group 4: Weighted Core & Abdominals", timestampSeconds: 1665, duration: "4.5 min" },
+    { id: "jd6", name: "Full Body Cool Down & Recovery", timestampSeconds: 1920, duration: "3 min" },
+  ],
+
+  // 11. Juice & Toya 25 Min Muscular Endurance
+  "25-min-muscular-endurance-juice-toya": [
+    { id: "je1", name: "Dynamic Warm Up", timestampSeconds: 0, duration: "2 min" },
+    { id: "je2", name: "Circuit Group 1: High-Density Compounds", timestampSeconds: 120, duration: "6.5 min" },
+    { id: "je3", name: "Circuit Group 2: Posterior Chain & Pull Strength", timestampSeconds: 510, duration: "6.5 min" },
+    { id: "je4", name: "Circuit Group 3: Core & Shoulder Endurance", timestampSeconds: 900, duration: "7 min" },
+    { id: "je5", name: "Circuit Group 4: Full Body Power Repeater", timestampSeconds: 1320, duration: "8 min" },
+    { id: "je6", name: "Complete Cool-Down Stretch", timestampSeconds: 1800, duration: "3.5 min" },
+  ],
+
+  // 12. fitness__kaykay 45 Min Power Workout
+  "45-min-power-db-workout-kaykay": [
+    { id: "kk1", name: "Dynamic Mobility Warm-Up", timestampSeconds: 0, duration: "3 min" },
+    { id: "kk2", name: "Power Block 1: Heavy DB Squats & Presses", timestampSeconds: 195, duration: "12 min" },
+    { id: "kk3", name: "Power Block 2: Deadlifts, Rows & Back Strength", timestampSeconds: 930, duration: "11.5 min" },
+    { id: "kk4", name: "Power Block 3: Unilateral Lunges & Chest Flyes", timestampSeconds: 1620, duration: "11.5 min" },
+    { id: "kk5", name: "Power Block 4: Core Conditioning & Carries", timestampSeconds: 2295, duration: "9 min" },
+    { id: "kk6", name: "Full Body Decompression & Stretch", timestampSeconds: 2820, duration: "5.5 min" },
+  ],
+
+  // 13. Sunny Health & Fitness 15 Min Bodyweight
+  "15-min-beginner-bodyweight-strength-sunny": [
+    { id: "sh1", name: "Warm-Up (Toy Soldiers & Hip Openers)", timestampSeconds: 0, duration: "4.5 min" },
+    { id: "sh2", name: "Triplex Complex 1: Squat + Dead Reach + Lunge", timestampSeconds: 265, duration: "4 min" },
+    { id: "sh3", name: "Triplex Complex 2: Single-Leg B-Stance Squat", timestampSeconds: 505, duration: "1.5 min" },
+    { id: "sh4", name: "Split Squats & Quad Burner", timestampSeconds: 600, duration: "2.5 min" },
+    { id: "sh5", name: "Scapular Squeeze & Push-Up Shoulder Taps", timestampSeconds: 765, duration: "3 min" },
+    { id: "sh6", name: "Cool-Down Stretch & Hip Flexor Mobility", timestampSeconds: 950, duration: "2 min" },
+  ],
+
+  // 14. SeniorShape Fitness 25 Min Isometric Strength
+  "25-min-isometric-strength-seniorshape": [
+    { id: "ss1", name: "Low-Impact Gentle Warm-Up", timestampSeconds: 0, duration: "6.5 min" },
+    { id: "ss2", name: "Overhead Shoulder Press & Isometric Holds", timestampSeconds: 400, duration: "2 min" },
+    { id: "ss3", name: "Balance Lunges & Supported Squat Holds", timestampSeconds: 505, duration: "2 min" },
+    { id: "ss4", name: "Bicep Curls & Halfway Isometric Burn", timestampSeconds: 635, duration: "3 min" },
+    { id: "ss5", name: "Hinged Back Rows & Side Lunges", timestampSeconds: 825, duration: "4.5 min" },
+    { id: "ss6", name: "Front & Lateral Shoulder Sculpting", timestampSeconds: 1105, duration: "2 min" },
+    { id: "ss7", name: "Standing Quad Extensions & Stretch", timestampSeconds: 1200, duration: "8.5 min" },
+  ],
+
+  // 15. PILATES BY IZZY 45 Min Full Body Strength
+  "45-min-full-body-strength-izzy": [
+    { id: "iz1", name: "Cat-Cow Spine Waves & Downward Dog Warm-Up", timestampSeconds: 0, duration: "4.5 min" },
+    { id: "iz2", name: "Abdominal Imprint Series & Rainbow Weights", timestampSeconds: 275, duration: "9 min" },
+    { id: "iz3", name: "4-Point Glute Extensions & Thread the Needle", timestampSeconds: 810, duration: "5 min" },
+    { id: "iz4", name: "Tricep Push-Ups to Pike Ankle Taps", timestampSeconds: 1110, duration: "2 min" },
+    { id: "iz5", name: "Side Plank Arm Rows & Leg Crunch", timestampSeconds: 1225, duration: "3 min" },
+    { id: "iz6", name: "Standing 90/90 Lunges & Hinge Sweeps", timestampSeconds: 1395, duration: "20 min" },
+    { id: "iz7", name: "Full Body Pigeon Stretches & Recovery", timestampSeconds: 2605, duration: "4.5 min" },
   ],
 };
 
@@ -57,12 +190,11 @@ declare global {
 function WorkoutDetailPage() {
   const { id } = Route.useParams();
   const workout = FEATURED_YOUTUBE_WORKOUTS.find((w) => w.id === id) || FEATURED_YOUTUBE_WORKOUTS[0];
-  const segments = WORKOUT_SEGMENTS[id] || WORKOUT_SEGMENTS["25-min-full-body-hiit"];
+  const segments = WORKOUT_SEGMENTS[id] || WORKOUT_SEGMENTS[FEATURED_YOUTUBE_WORKOUTS[0].id];
 
   const playerRef = useRef<any>(null);
   const containerId = useRef(`yt-player-${Math.random().toString(36).substring(2, 9)}`);
 
-  // Restore saved session from localStorage
   const savedSessionKey = `nutrifit_workout_${id}`;
   const [savedTime] = useState<number>(() => {
     const saved = localStorage.getItem(savedSessionKey);
@@ -76,7 +208,6 @@ function WorkoutDetailPage() {
     return saved ? JSON.parse(saved).completed || [] : [];
   });
 
-  // Track active workout globally so sidebar knows where to return
   useEffect(() => {
     localStorage.setItem("nutrifit_active_workout_id", id);
   }, [id]);
@@ -90,7 +221,6 @@ function WorkoutDetailPage() {
 
   const videoId = extractYouTubeId(workout.video_url);
 
-  // Initialize YouTube Player
   useEffect(() => {
     if (!window.YT) {
       const tag = document.createElement("script");
@@ -107,7 +237,7 @@ function WorkoutDetailPage() {
           modestbranding: 1,
           rel: 0,
           playsinline: 1,
-          start: Math.floor(savedTime), // Resume where you left off
+          start: Math.floor(savedTime),
         },
         events: {
           onReady: (event: any) => {
@@ -116,11 +246,7 @@ function WorkoutDetailPage() {
             }
           },
           onStateChange: (event: any) => {
-            if (event.data === 1) {
-              setIsPlaying(true);
-            } else {
-              setIsPlaying(false);
-            }
+            setIsPlaying(event.data === 1);
           },
         },
       });
@@ -139,7 +265,6 @@ function WorkoutDetailPage() {
     };
   }, [videoId, savedTime]);
 
-  // Real-time tracking + localStorage persistence
   useEffect(() => {
     let interval: any;
 
@@ -166,7 +291,6 @@ function WorkoutDetailPage() {
 
           setCompletedSegmentIds(updatedCompleted);
 
-          // Save state to localStorage
           localStorage.setItem(
             savedSessionKey,
             JSON.stringify({ time: secs, completed: updatedCompleted })
@@ -227,7 +351,7 @@ function WorkoutDetailPage() {
       <div className="rounded-3xl border border-border bg-card p-6 shadow-xs space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-            {workout.difficulty}
+            {workout.difficulty} • {workout.category.replace("_", " ")}
           </span>
 
           <div className="flex items-center gap-4 text-xs font-bold text-muted-foreground">

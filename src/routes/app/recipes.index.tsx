@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
 import {
   Clock,
@@ -14,11 +14,14 @@ import {
   Camera,
   CheckCircle2,
   Users,
+  Lock,
+  Check,
+  ArrowRight,
+  ShieldCheck,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
-import { useSubscription } from "@/lib/use-subscription";
-import { PremiumLockedScreen } from "@/components/app/premium-guard";
+import { useSubscription } from "@/hooks/use-subscription";
 
 export const Route = createFileRoute("/app/recipes/")({
   head: () => ({
@@ -32,7 +35,12 @@ export const Route = createFileRoute("/app/recipes/")({
 
 export function RecipesPage() {
   const { user } = useAuth();
-  const { hasAccess, loading: subscriptionLoading } = useSubscription();
+  const sub = useSubscription();
+
+  const isPremium = sub.isPremium || (sub as any).tier === "premium";
+  const isTrialActive = sub.isTrialActive ?? (sub.daysLeft > 0 && !isPremium);
+  const hasAccess = isPremium || isTrialActive;
+  const subscriptionLoading = sub.loading;
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -237,15 +245,60 @@ export function RecipesPage() {
   // 1. Loading State while checking subscription
   if (subscriptionLoading) {
     return (
-      <div className="flex h-64 items-center justify-center text-xs text-muted-foreground">
+      <div className="flex h-64 items-center justify-center text-xs text-muted-foreground font-sans">
         <Loader2 className="h-5 w-5 animate-spin text-primary mr-2" /> Checking access...
       </div>
     );
   }
 
-  // 2. Paywall Guard: Block the entire page if trial expired & not premium
+  // 2. Paywall Guard: Block features on Free Tier (when trial has expired and user is not on Premium)
   if (!hasAccess) {
-    return <PremiumLockedScreen featureName="Nutritionist Recipes & Meal Plans" />;
+    return (
+      <div className="flex-1 flex items-center justify-center p-4 font-sans min-h-[70vh]">
+        <div className="max-w-md w-full text-center space-y-6 rounded-3xl border border-border bg-card p-6 sm:p-8 shadow-xl animate-in fade-in">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-amber-500/10 border border-amber-500/20 text-amber-500 shadow-inner">
+            <Lock className="h-8 w-8" />
+          </div>
+
+          <div className="space-y-2">
+            <span className="rounded-full bg-amber-500/10 border border-amber-500/20 px-3 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-500">
+              Premium Feature
+            </span>
+            <h2 className="font-display text-2xl font-extrabold text-foreground">
+              Nutritionist Recipes &amp; Meal Plans
+            </h2>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Your 60-day free trial has concluded and your account is on the Free Tier. Workouts and basic logs remain free forever. Unlock verified recipes, calorie breakdowns, and custom meal ideas for R49.00/month.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-muted/30 p-4 text-left text-xs space-y-2 text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <Check className="h-4 w-4 text-emerald-500 shrink-0" />
+              <span>Full access to verified South African recipes catalog</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Check className="h-4 w-4 text-emerald-500 shrink-0" />
+              <span>Accurate protein, carb, fat &amp; calorie breakdowns</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Check className="h-4 w-4 text-emerald-500 shrink-0" />
+              <span>Community submissions &amp; nutritionist review</span>
+            </div>
+          </div>
+
+          <Link
+            to="/app/profile"
+            search={{ subscribe: "true" }}
+            className="w-full flex items-center justify-center gap-2 rounded-2xl bg-amber-500 hover:bg-amber-600 active:scale-95 py-3.5 text-xs font-bold text-white shadow-md transition uppercase tracking-wider cursor-pointer"
+          >
+            <Sparkles className="h-4 w-4" />
+            <span>Unlock Premium (R49.00 / mo)</span>
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   // Combine Official & Approved Community Recipes
@@ -267,7 +320,7 @@ export function RecipesPage() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-sans">
       {/* HEADER BAR */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-3xl border border-primary/20 bg-primary/5 p-6 shadow-sm">
         <div>

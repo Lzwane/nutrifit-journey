@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
-import { useSubscription } from "@/lib/use-subscription";
+import { useSubscription } from "@/hooks/use-subscription";
 
 export const Route = createFileRoute("/app/")({
   head: () => ({
@@ -72,7 +72,12 @@ function getDailyIndex(dateStr: string, totalItems: number): number {
 
 function HomePage() {
   const { user } = useAuth();
-  const { tier, daysLeft, isTrialActive, hasAccess } = useSubscription();
+  const sub = useSubscription();
+
+  const isPremium = sub.isPremium || (sub as any).tier === "premium";
+  const isTrialActive = sub.isTrialActive ?? (sub.daysLeft > 0 && !isPremium);
+  const daysLeft = sub.daysLeft ?? 60;
+  const hasAccess = isPremium || isTrialActive;
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [quote, setQuote] = useState<{ text: string; author: string | null } | null>(null);
@@ -131,7 +136,11 @@ function HomePage() {
           .maybeSingle(),
         supabase.from("daily_quotes").select("text,author"),
         supabase.from("tips").select("text"),
-        supabase.from("food_logs").select("calories, protein_g, carbs_g, fat_g").eq("user_id", user.id).eq("log_date", today),
+        supabase
+          .from("food_logs")
+          .select("calories, protein_g, carbs_g, fat_g")
+          .eq("user_id", user.id)
+          .eq("log_date", today),
         supabase.from("water_logs").select("amount_ml").eq("user_id", user.id).eq("log_date", today),
         supabase
           .from("workout_sessions")
@@ -190,7 +199,7 @@ function HomePage() {
       : 0;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 max-w-5xl mx-auto font-sans pb-10">
       {/* CELEBRATION POP-IN BANNER */}
       {bannerState !== "hidden" && (
         <div
@@ -235,10 +244,10 @@ function HomePage() {
             </div>
             <div>
               <h3 className="font-display text-sm sm:text-base font-extrabold text-foreground">
-                60-Day Free Trial Concluded
+                60-Day Free Trial Concluded — You're on Free Tier
               </h3>
               <p className="text-xs text-muted-foreground">
-                AI Voice Coaching and Exclusive Recipes are now locked. Upgrade to Premium to restore unlimited access.
+                Workouts and tracking remain free forever. Unlock NutriGuide AI Coach and verified recipes for R49.00/month.
               </p>
             </div>
           </div>
@@ -248,12 +257,12 @@ function HomePage() {
             search={{ subscribe: "true" }}
             className="cursor-pointer inline-flex items-center gap-1.5 rounded-2xl bg-amber-500 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-amber-600 transition shrink-0"
           >
-            <Sparkles className="h-4 w-4" /> Upgrade (R49/mo) <ArrowRight className="h-3.5 w-3.5" />
+            <Sparkles className="h-4 w-4" /> Unlock Premium (R49/mo) <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </div>
       )}
 
-      {/* HEADER GREETING */}
+      {/* HEADER GREETING & TIER BADGES */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{greeting()},</p>
@@ -263,7 +272,8 @@ function HomePage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {tier === "premium" ? (
+          {/* MEMBERSHIP STATUS PILL */}
+          {isPremium ? (
             <div className="flex items-center gap-1.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-3.5 py-2 text-xs font-extrabold text-emerald-600 dark:text-emerald-400">
               <ShieldCheck className="h-4 w-4" />
               <span>Premium</span>
@@ -271,19 +281,20 @@ function HomePage() {
           ) : isTrialActive ? (
             <div className="flex items-center gap-1.5 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-3.5 py-2 text-xs font-extrabold text-amber-600 dark:text-amber-400">
               <Clock className="h-4 w-4" />
-              <span>{daysLeft}d Trial Left</span>
+              <span>Free Tier ({daysLeft}d left)</span>
             </div>
           ) : (
             <Link
               to="/app/profile"
               search={{ subscribe: "true" }}
-              className="flex items-center gap-1.5 rounded-2xl border border-rose-500/20 bg-rose-500/10 px-3.5 py-2 text-xs font-extrabold text-rose-600 dark:text-rose-400 hover:scale-105 transition"
+              className="flex items-center gap-1.5 rounded-2xl border border-slate-500/20 bg-slate-500/10 px-3.5 py-2 text-xs font-extrabold text-muted-foreground hover:border-amber-500/30 hover:text-amber-500 transition cursor-pointer"
             >
               <Lock className="h-3.5 w-3.5" />
-              <span>Trial Expired</span>
+              <span>Free Tier</span>
             </Link>
           )}
 
+          {/* STREAK BADGE */}
           <div className="flex items-center gap-2 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-2 text-xs font-extrabold text-orange-600 dark:text-orange-400 shadow-sm">
             <FireIcon className="h-4 w-4 fill-orange-500 text-orange-500" />
             <span>{profile?.streak_count ?? 0} Day Streak</span>
