@@ -1,225 +1,207 @@
-import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { 
-  Home, 
-  Utensils, 
-  Dumbbell, 
-  Users, 
-  Bot, 
-  User,
+import { Link, useRouterState } from "@tanstack/react-router";
+import {
+  Home,
+  Dumbbell,
   ChefHat,
-  LogOut
+  Sparkles,
+  Users,
+  User,
+  Shield,
+  UtensilsCrossed,
 } from "lucide-react";
-import { NutriFitLogo } from "@/components/app/logo";
 import { useAuth } from "@/lib/auth";
-import { supabase } from "@/integrations/supabase/client";
+import { useSubscription } from "@/hooks/use-subscription";
+import { NutriFitLogo } from "@/components/app/logo";
 
-export function AppShell({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
-  const location = useLocation();
-  const navigate = useNavigate();
+interface AppShellProps {
+  children: React.ReactNode;
+}
 
-  // State to hold dynamically remembered last visited URLs per section
-  const [savedPaths, setSavedPaths] = useState<{ [key: string]: string }>({});
-
-  // 1. On route change, record the exact current sub-path for the active section
-  useEffect(() => {
-    const path = location.pathname;
-
-    const sections = ["recipes", "nutrition", "workouts", "coach", "community", "profile"];
-    for (const section of sections) {
-      if (path.startsWith(`/app/${section}`)) {
-        sessionStorage.setItem(`nutrifit_last_path_${section}`, path);
-        setSavedPaths((prev) => ({ ...prev, [section]: path }));
-        break;
-      }
-    }
-  }, [location.pathname]);
-
-  // Helper to retrieve the latest remembered path or fallback to base
-  const getSectionPath = (section: string, defaultPath: string) => {
-    if (typeof window !== "undefined") {
-      const stored = sessionStorage.getItem(`nutrifit_last_path_${section}`);
-      if (stored) return stored;
-    }
-    return savedPaths[section] || defaultPath;
-  };
+export function AppShell({ children }: AppShellProps) {
+  const { user, isAdmin } = useAuth();
+  const sub = useSubscription();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   const navItems = [
-    { label: "Home", href: "/app", icon: Home, exact: true },
-    { 
-      label: "Recipes", 
-      href: getSectionPath("recipes", "/app/recipes"), 
-      icon: ChefHat,
-      section: "recipes"
+    {
+      to: "/app",
+      label: "Home",
+      icon: Home,
+      exact: true,
     },
-    { 
-      label: "Nutrition", 
-      href: getSectionPath("nutrition", "/app/nutrition"), 
-      icon: Utensils,
-      section: "nutrition"
+    {
+      to: "/app/nutrition",
+      label: "Nutrition",
+      icon: UtensilsCrossed,
+      exact: false,
     },
-    { 
-      label: "Workouts", 
-      href: getSectionPath("workouts", "/app/workouts"), 
+    {
+      to: "/app/workouts",
+      label: "Workouts",
       icon: Dumbbell,
-      section: "workouts"
+      exact: false,
     },
-    { 
-      label: "NutriGuide AI", 
-      href: getSectionPath("coach", "/app/coach"), 
-      icon: Bot,
-      section: "coach"
+    {
+      to: "/app/recipes",
+      label: "Recipes",
+      icon: ChefHat,
+      exact: false,
     },
-    { 
-      label: "Community", 
-      href: getSectionPath("community", "/app/community"), 
+    {
+      to: "/app/coach",
+      label: "AI Coach",
+      icon: Sparkles,
+      exact: false,
+      isPro: sub.isExpired,
+    },
+    {
+      to: "/app/community",
+      label: "Community",
       icon: Users,
-      section: "community"
+      exact: false,
     },
-    { 
-      label: "Profile", 
-      href: getSectionPath("profile", "/app/profile"), 
+    {
+      to: "/app/profile",
+      label: "Profile",
       icon: User,
-      section: "profile"
+      exact: false,
     },
   ];
 
-  const isActive = (item: typeof navItems[0]) => {
-    if (item.exact) {
-      return location.pathname === "/app" || location.pathname === "/app/";
-    }
-    if (item.section) {
-      return location.pathname.startsWith(`/app/${item.section}`);
-    }
-    return location.pathname.startsWith(item.href);
-  };
-
-  const handleSignOut = async () => {
-    // Clear navigation history memory on logout
-    if (typeof window !== "undefined") {
-      const sections = ["recipes", "nutrition", "workouts", "coach", "community", "profile"];
-      sections.forEach((s) => sessionStorage.removeItem(`nutrifit_last_path_${s}`));
-    }
-    await supabase.auth.signOut();
-    navigate({ to: "/auth" });
-  };
-
   return (
-    <div className="flex min-h-screen bg-background text-foreground font-sans">
-      {/* ================= DESKTOP & TABLET SIDEBAR ================= */}
-      <aside className="hidden md:flex w-60 lg:w-64 border-r border-border bg-card p-4 lg:p-6 flex-col justify-between shrink-0 fixed inset-y-0 left-0 z-30">
-        <div className="space-y-6 lg:space-y-8">
-          {/* LOGO */}
-          <Link to="/app" className="flex items-center gap-3 group">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted p-1.5 shadow-inner transition group-hover:scale-105">
+    <div className="min-h-screen flex flex-col md:flex-row bg-background text-foreground font-sans antialiased selection:bg-primary/20">
+      
+      {/* 1. DESKTOP / TABLET FIXED LEFT SIDEBAR */}
+      <aside className="hidden md:flex w-64 border-r border-border bg-card/60 backdrop-blur-md flex-col justify-between shrink-0 sticky top-0 h-screen overflow-y-auto p-6">
+        <div className="space-y-8">
+          {/* Logo Brand */}
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-muted p-1.5 shadow-inner border border-border">
               <NutriFitLogo className="h-full w-full object-contain" />
             </div>
-            <div className="flex flex-col leading-tight">
-              <span className="font-display text-lg font-extrabold tracking-tight">
-                <span style={{ color: "var(--brand-green)" }}>Nutri</span>
-                <span style={{ color: "var(--brand-orange)" }}>Fit</span>
+            <div>
+              <span className="font-display text-lg font-extrabold tracking-tight block">
+                <span className="text-emerald-500">Nutri</span>
+                <span className="text-amber-500">Fit</span>
               </span>
-              <span className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground">
-                Fitness &amp; Health
+              <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider block">
+                Health &amp; Wellness
               </span>
             </div>
-          </Link>
+          </div>
 
-          {/* NAVIGATION LINKS */}
-          <nav className="space-y-1">
+          {/* Nav Links */}
+          <nav className="space-y-1.5">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const active = isActive(item);
+              const isActive = item.exact
+                ? pathname === item.to || pathname === "/app/"
+                : pathname.startsWith(item.to);
+
               return (
                 <Link
-                  key={item.label}
-                  to={item.href}
-                  className={`flex items-center space-x-3 px-3.5 py-2.5 lg:px-4 lg:py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
-                    active
-                      ? "bg-primary text-primary-foreground shadow-sm"
+                  key={item.to}
+                  to={item.to}
+                  className={`flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-bold transition cursor-pointer ${
+                    isActive
+                      ? "bg-primary text-primary-foreground shadow-xs"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   }`}
                 >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  <span className="truncate">{item.label}</span>
+                  <div className="flex items-center gap-3">
+                    <Icon className="h-4 w-4" />
+                    <span>{item.label}</span>
+                  </div>
+
+                  {item.isPro && (
+                    <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[9px] font-black text-amber-500">
+                      PRO
+                    </span>
+                  )}
                 </Link>
               );
             })}
+
+            {isAdmin && (
+              <Link
+                to="/admin"
+                className="flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-bold text-amber-500 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 transition mt-4"
+              >
+                <Shield className="h-4 w-4" />
+                <span>Admin Portal</span>
+              </Link>
+            )}
           </nav>
         </div>
 
-        {/* USER BRIEF FOOTER & SIGN OUT */}
-        {user && (
-          <div className="pt-4 border-t border-border space-y-3">
-            <div className="flex items-center gap-3 overflow-hidden">
-              <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
-                {user.email?.[0].toUpperCase() || "U"}
-              </div>
-              <div className="truncate text-xs">
-                <p className="font-semibold truncate text-foreground">
-                  {user.user_metadata?.full_name || user.email?.split("@")[0]}
-                </p>
-                <p className="text-[10px] text-muted-foreground truncate">{user.email}</p>
-              </div>
-            </div>
-
-            {/* DESKTOP SIGN OUT BUTTON */}
-            <button
-              type="button"
-              onClick={handleSignOut}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-destructive hover:bg-destructive/10 transition cursor-pointer"
-            >
-              <LogOut className="h-4 w-4" />
-              <span>Sign Out</span>
-            </button>
+        {/* User Card on Desktop Bottom */}
+        <div className="pt-4 border-t border-border flex items-center gap-3">
+          <div className="h-9 w-9 rounded-full bg-primary/10 text-primary font-bold text-xs flex items-center justify-center border border-primary/20">
+            {user?.email?.[0].toUpperCase() || "U"}
           </div>
-        )}
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold text-foreground truncate">
+              {user?.email?.split("@")[0]}
+            </p>
+            <p className="text-[10px] text-muted-foreground truncate font-mono">
+              {isAdmin ? "Administrator" : sub.isPremium ? "Premium" : "Trial Member"}
+            </p>
+          </div>
+        </div>
       </aside>
 
-      {/* ================= MAIN CONTENT AREA ================= */}
-      <main className="flex-1 md:pl-60 lg:pl-64 pb-20 md:pb-8 w-full min-h-screen flex flex-col">
-        <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 w-full flex-1 flex flex-col">
-          {children}
-        </div>
+      {/* 2. MAIN CONTENT AREA (Clean spacing so top greetings & headers are clearly visible) */}
+      <main className="flex-1 w-full pt-6 md:pt-8 pb-24 md:pb-10 px-4 sm:px-6 md:px-8 max-w-7xl mx-auto">
+        {children}
       </main>
 
-      {/* ================= MOBILE BOTTOM NAVIGATION (SINGLE LINE) ================= */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-md border-t border-border px-1 py-1.5 flex items-center justify-around shadow-lg">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const active = isActive(item);
-          return (
-            <Link
-              key={item.label}
-              to={item.href}
-              className={`flex flex-1 flex-col items-center justify-center py-1 px-0.5 rounded-xl transition cursor-pointer min-w-0 ${
-                active
-                  ? "text-primary font-bold scale-105"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Icon className={`h-4 w-4 sm:h-5 sm:w-5 ${active ? "text-primary" : ""}`} />
-              <span className="text-[8px] sm:text-[9.5px] truncate max-w-full mt-0.5 leading-tight">
-                {item.label}
-              </span>
-            </Link>
-          );
-        })}
+      {/* 3. FLUSH MOBILE BOTTOM NAVIGATION */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-card/95 dark:bg-slate-950/95 backdrop-blur-xl border-t border-border/80 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] pb-[env(safe-area-inset-bottom)]">
+        <div className="flex items-center justify-around h-14 px-1 max-w-lg mx-auto">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = item.exact
+              ? pathname === item.to || pathname === "/app/"
+              : pathname.startsWith(item.to);
 
-        {/* MOBILE SIGN OUT BUTTON */}
-        <button
-          type="button"
-          onClick={handleSignOut}
-          className="flex flex-1 flex-col items-center justify-center py-1 px-0.5 rounded-xl transition cursor-pointer min-w-0 text-destructive hover:text-destructive/80"
-          title="Sign Out"
-        >
-          <LogOut className="h-4 w-4 sm:h-5 sm:w-5" />
-          <span className="text-[8px] sm:text-[9.5px] truncate max-w-full mt-0.5 leading-tight">
-            Sign Out
-          </span>
-        </button>
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                className={`relative flex flex-col items-center justify-center flex-1 h-full py-1 transition-colors cursor-pointer ${
+                  isActive
+                    ? "text-primary font-bold"
+                    : "text-muted-foreground/75 hover:text-foreground font-medium"
+                }`}
+              >
+                {/* Active Indicator Line */}
+                {isActive && (
+                  <span className="absolute top-0 w-6 h-0.5 bg-primary rounded-full" />
+                )}
+
+                {/* Icon Container */}
+                <div className="relative flex items-center justify-center">
+                  <Icon className={`h-5 w-5 transition-transform ${isActive ? "scale-110" : ""}`} />
+
+                  {item.isPro && (
+                    <span className="absolute -top-1 -right-2.5 flex h-3 px-1 items-center justify-center rounded-full bg-amber-500 text-[7px] font-extrabold text-white shadow-xs">
+                      PRO
+                    </span>
+                  )}
+                </div>
+
+                {/* Text Label */}
+                <span className="text-[10px] tracking-tight mt-1 leading-none">
+                  {item.label}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
       </nav>
+
     </div>
   );
 }
+
+export default AppShell;
