@@ -150,14 +150,14 @@ export function AppShell({ children }: AppShellProps) {
         </div>
       </aside>
 
-      {/* 2. MAIN CONTENT AREA (Clean spacing so top greetings & headers are clearly visible) */}
-      <main className="flex-1 w-full pt-6 md:pt-8 pb-24 md:pb-10 px-4 sm:px-6 md:px-8 max-w-7xl mx-auto">
+      {/* 2. MAIN CONTENT AREA */}
+      <main className="flex-1 w-full pt-6 md:pt-8 pb-28 md:pb-10 px-4 sm:px-6 md:px-8 max-w-7xl mx-auto">
         {children}
       </main>
 
-      {/* 3. FLUSH MOBILE BOTTOM NAVIGATION */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-card/95 dark:bg-slate-950/95 backdrop-blur-xl border-t border-border/80 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] pb-[env(safe-area-inset-bottom)]">
-        <div className="flex items-center justify-around h-14 px-1 max-w-lg mx-auto">
+      {/* 3. HORIZONTALLY SCROLLABLE MOBILE BOTTOM NAVIGATION */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-card/95 dark:bg-slate-950/95 backdrop-blur-xl border-t border-border/80 shadow-[0_-4px_24px_rgba(0,0,0,0.1)] pb-[env(safe-area-inset-bottom)]">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth h-16 px-3">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = item.exact
@@ -168,20 +168,20 @@ export function AppShell({ children }: AppShellProps) {
               <Link
                 key={item.to}
                 to={item.to}
-                className={`relative flex flex-col items-center justify-center flex-1 h-full py-1 transition-colors cursor-pointer ${
+                className={`relative flex flex-col items-center justify-center min-w-[76px] h-full py-1.5 px-1 transition-all cursor-pointer shrink-0 rounded-2xl ${
                   isActive
-                    ? "text-primary font-bold"
-                    : "text-muted-foreground/75 hover:text-foreground font-medium"
+                    ? "text-primary font-bold bg-primary/10"
+                    : "text-muted-foreground/80 hover:text-foreground font-medium"
                 }`}
               >
-                {/* Active Indicator Line */}
+                {/* Active Indicator Bar */}
                 {isActive && (
-                  <span className="absolute top-0 w-6 h-0.5 bg-primary rounded-full" />
+                  <span className="absolute top-0 w-8 h-0.5 bg-primary rounded-full" />
                 )}
 
-                {/* Icon Container */}
+                {/* Icon */}
                 <div className="relative flex items-center justify-center">
-                  <Icon className={`h-5 w-5 transition-transform ${isActive ? "scale-110" : ""}`} />
+                  <Icon className={`h-5 w-5 sm:h-5.5 sm:w-5.5 transition-transform ${isActive ? "scale-105" : ""}`} />
 
                   {item.isPro && (
                     <span className="absolute -top-1 -right-2.5 flex h-3 px-1 items-center justify-center rounded-full bg-amber-500 text-[7px] font-extrabold text-white shadow-xs">
@@ -191,7 +191,7 @@ export function AppShell({ children }: AppShellProps) {
                 </div>
 
                 {/* Text Label */}
-                <span className="text-[10px] tracking-tight mt-1 leading-none">
+                <span className="text-[10px] tracking-tight mt-1 leading-none font-semibold">
                   {item.label}
                 </span>
               </Link>
