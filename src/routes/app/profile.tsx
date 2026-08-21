@@ -22,6 +22,7 @@ import {
   ShieldAlert,
   Flame,
   Scale,
+  Loader2,
 } from "lucide-react";
 
 export const Route = createFileRoute("/app/profile")({
@@ -33,6 +34,15 @@ export const Route = createFileRoute("/app/profile")({
   }),
   component: ProfilePage,
 });
+
+declare global {
+  interface Window {
+    paypal?: any;
+  }
+}
+
+const PAYPAL_CLIENT_ID = "BAAxTcLqIVHVERsaIBE05lJcQiNGux3xmiuizGZiBZpXnlQBt8LGnJW9ei9gVhtwzObCQmwZzt0VJ1Mw4I";
+const PAYPAL_PLAN_ID = "P-7V56155591696325CNKDKF2Q";
 
 function ProfilePage() {
   const { user } = useAuth();
@@ -62,13 +72,10 @@ function ProfilePage() {
     () => (localStorage.getItem("nutrifit-theme") as any) || "system"
   );
 
-  // Payment Modal
+  // Payment Modal & PayPal Loading State
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const [cardNumber, setCardNumber] = useState("");
-  const [cardExpiry, setCardExpiry] = useState("");
-  const [cardCvv, setCardCvv] = useState("");
-  const [cardName, setCardName] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [loadingPayPal, setLoadingPayPal] = useState(true);
+  const paypalRenderedRef = useRef(false);
 
   useEffect(() => {
     if (searchParams?.subscribe === "true" || searchParams?.subscribe === true) {
@@ -163,6 +170,96 @@ function ProfilePage() {
     refresh();
   }, [user]);
 
+  // PayPal Button Dynamic Loader
+  useEffect(() => {
+    if (!showUpgradeModal) {
+      paypalRenderedRef.current = false;
+      return;
+    }
+
+    setLoadingPayPal(true);
+    const containerId = `paypal-button-container-${PAYPAL_PLAN_ID}`;
+
+    const renderPayPalButtons = () => {
+      const container = document.getElementById(containerId);
+      if (!window.paypal || !container || paypalRenderedRef.current) return;
+
+      container.innerHTML = "";
+
+      try {
+        window.paypal
+          .Buttons({
+            style: {
+              shape: "rect",
+              color: "silver",
+              layout: "vertical",
+              label: "subscribe",
+            },
+            createSubscription: function (_data: any, actions: any) {
+              return actions.subscription.create({
+                plan_id: PAYPAL_PLAN_ID,
+                custom_id: user?.id,
+              });
+            },
+            onApprove: async function (data: any) {
+              const nextBilling = new Date();
+              nextBilling.setDate(nextBilling.getDate() + 30);
+
+              await supabase
+                .from("profiles")
+                .update({
+                  subscription_tier: "premium",
+                  subscription_status: "active",
+                  next_billing_date: nextBilling.toISOString(),
+                  card_brand: "PayPal Subscription",
+                  card_last_four: (data.subscriptionID || "PAYPAL").slice(-4),
+                } as any)
+                .eq("id", user?.id);
+
+              setShowUpgradeModal(false);
+              await refresh();
+              alert("Subscription activated successfully! NutriFit Premium is now active.");
+            },
+            onError: function (err: any) {
+              console.error("PayPal Error:", err);
+              alert("PayPal encountered an error. Please try again.");
+            },
+          })
+          .render(`#${containerId}`);
+
+        paypalRenderedRef.current = true;
+      } catch (err) {
+        console.error("Failed rendering PayPal:", err);
+      } finally {
+        setLoadingPayPal(false);
+      }
+    };
+
+    if (window.paypal) {
+      renderPayPalButtons();
+      return;
+    }
+
+    const scriptId = "paypal-sdk-script";
+    let script = document.getElementById(scriptId) as HTMLScriptElement;
+
+    if (!script) {
+      script = document.createElement("script");
+      script.id = scriptId;
+      script.src = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&vault=true&intent=subscription`;
+      script.setAttribute("data-sdk-integration-source", "button-factory");
+      script.async = true;
+
+      script.onload = () => {
+        renderPayPalButtons();
+      };
+
+      document.body.appendChild(script);
+    } else {
+      script.addEventListener("load", renderPayPalButtons);
+    }
+  }, [showUpgradeModal, user]);
+
   const handleEditBioClick = () => {
     setIsEditingBio(true);
     setTimeout(() => bioInputRef.current?.focus(), 50);
@@ -219,41 +316,6 @@ function ProfilePage() {
     setTimeout(() => setSavedFlash(false), 1500);
   };
 
-  const handleSubscribe = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !cardNumber || !cardExpiry || !cardCvv) return;
-    setIsProcessing(true);
-
-    setTimeout(async () => {
-      const cleanCard = cardNumber.replace(/\s+/g, "");
-      const lastFour = cleanCard.slice(-4) || "4242";
-
-      const now = new Date();
-      let nextBilling = new Date();
-
-      if (daysLeft > 0 && trialEndDate) {
-        nextBilling = new Date(trialEndDate.getTime());
-      } else {
-        nextBilling.setDate(now.getDate() + 30);
-      }
-
-      await supabase
-        .from("profiles")
-        .update({
-          subscription_tier: "premium",
-          subscription_status: "active",
-          card_last_four: lastFour,
-          card_brand: cleanCard.startsWith("5") ? "Mastercard" : "Visa",
-          next_billing_date: nextBilling.toISOString(),
-        } as any)
-        .eq("id", user.id);
-
-      setIsProcessing(false);
-      setShowUpgradeModal(false);
-      await refresh();
-    }, 1500);
-  };
-
   const handleCancelSubscription = async () => {
     if (!user || !confirm("Are you sure you want to cancel your Premium plan?")) return;
 
@@ -274,8 +336,6 @@ function ProfilePage() {
   const displayName = `${profile.first_name || ""} ${profile.last_name || ""}`.trim() || user?.email?.split("@")[0] || "User";
   const isPremium = profile.subscription_tier === "premium" && profile.subscription_status === "active";
   const isTrialActive = !isPremium && daysLeft > 0;
-  
-  // Progress Bar Percentage (60 Days Max)
   const trialProgress = Math.min(100, Math.max(0, Math.round(((60 - daysLeft) / 60) * 100)));
 
   return (
@@ -381,7 +441,6 @@ function ProfilePage() {
             </div>
           </div>
 
-          {/* PROGRESS BAR */}
           {!isPremium && (
             <div className="space-y-1.5">
               <div className="h-3 w-full overflow-hidden rounded-full bg-muted border border-border">
@@ -400,7 +459,7 @@ function ProfilePage() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-muted-foreground pt-1 border-t border-border/50">
             <p>
               {isPremium
-                ? `Paying R49.00 / month via ${profile.card_brand || "Card"} (•••• ${profile.card_last_four || "4242"}).`
+                ? `Paying via ${profile.card_brand || "PayPal Subscription"}.`
                 : "Workouts & Tracking stay free forever. NutriGuide AI & Verified Recipes unlock with Premium."}
             </p>
             {!isPremium && (
@@ -414,11 +473,53 @@ function ProfilePage() {
             )}
           </div>
         </div>
+
+        {/* 3. STATS CARDS */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+          <div className="rounded-2xl border border-border bg-card p-3.5 shadow-xs">
+            <div className="flex items-center justify-between text-muted-foreground mb-1">
+              <span className="text-[11px] font-medium">Daily Calories</span>
+              <Flame className="h-3.5 w-3.5 text-amber-500" />
+            </div>
+            <span className="text-lg font-extrabold font-mono text-foreground">
+              {profile.daily_calorie_goal || 2000} <span className="text-xs font-normal text-muted-foreground">kcal</span>
+            </span>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-card p-3.5 shadow-xs">
+            <div className="flex items-center justify-between text-muted-foreground mb-1">
+              <span className="text-[11px] font-medium">Current Weight</span>
+              <Scale className="h-3.5 w-3.5 text-emerald-500" />
+            </div>
+            <span className="text-lg font-extrabold font-mono text-foreground">
+              {profile.current_weight_kg || "--"} <span className="text-xs font-normal text-muted-foreground">kg</span>
+            </span>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-card p-3.5 shadow-xs">
+            <div className="flex items-center justify-between text-muted-foreground mb-1">
+              <span className="text-[11px] font-medium">Goal Weight</span>
+              <Target className="h-3.5 w-3.5 text-sky-500" />
+            </div>
+            <span className="text-lg font-extrabold font-mono text-foreground">
+              {profile.goal_weight_kg || "--"} <span className="text-xs font-normal text-muted-foreground">kg</span>
+            </span>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-card p-3.5 shadow-xs">
+            <div className="flex items-center justify-between text-muted-foreground mb-1">
+              <span className="text-[11px] font-medium">Height</span>
+              <UserIcon className="h-3.5 w-3.5 text-primary" />
+            </div>
+            <span className="text-lg font-extrabold font-mono text-foreground">
+              {profile.height_cm || "--"} <span className="text-xs font-normal text-muted-foreground">cm</span>
+            </span>
+          </div>
+        </div>
       </section>
 
       {/* 4. ACCORDION FOLDERS */}
       <div className="space-y-3">
-        
         {/* Personal Info */}
         <div className="overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
           <button
@@ -667,7 +768,7 @@ function ProfilePage() {
                 </p>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
                   {isPremium
-                    ? `Your subscription is active. Recurring monthly deduction occurs on ${profile.next_billing_date ? new Date(profile.next_billing_date).toLocaleDateString() : "the scheduled date"} from your ${profile.card_brand || "Card"} (•••• ${profile.card_last_four || "4242"}).`
+                    ? `Your subscription is active. Recurring monthly deduction occurs on ${profile.next_billing_date ? new Date(profile.next_billing_date).toLocaleDateString() : "the scheduled date"} via ${profile.card_brand || "PayPal"}.`
                     : "Unlock NutriGuide AI Voice Coach and Exclusive Recipes for R49.00/month. Cancelling your subscription immediately restricts Premium features while keeping Workouts and Tracking free forever."}
                 </p>
               </div>
@@ -687,24 +788,25 @@ function ProfilePage() {
                     onClick={() => setShowUpgradeModal(true)}
                     className="cursor-pointer inline-flex items-center gap-2 rounded-xl bg-amber-500 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-amber-600 transition"
                   >
-                    <Sparkles className="h-4 w-4" /> Pay &amp; Activate Monthly (R49.00)
+                    <Sparkles className="h-4 w-4" /> Subscribe with PayPal (R49.00 / mo)
                   </button>
                 )}
               </div>
             </div>
           )}
         </div>
-
       </div>
 
-      {/* PAYMENT MODAL */}
+      {/* PAYPAL SUBSCRIPTION MODAL */}
       {showUpgradeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in">
           <div className="w-full max-w-md overflow-hidden rounded-3xl border border-border bg-card p-6 shadow-2xl space-y-5">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-amber-500" />
-                <h3 className="font-display text-lg font-bold text-foreground">Activate Monthly Plan</h3>
+                <h3 className="font-display text-base font-bold text-foreground">
+                  Activate Monthly Plan
+                </h3>
               </div>
               <button
                 type="button"
@@ -717,7 +819,7 @@ function ProfilePage() {
 
             <div className="rounded-2xl bg-amber-500/10 p-4 border border-amber-500/20 text-xs space-y-2">
               <p className="font-bold text-amber-600 dark:text-amber-400">
-                R49.00 / month (Auto-verifies active status monthly)
+                R49.00 / month (Automated Recurring Deduction)
               </p>
               <ul className="space-y-1 text-muted-foreground text-[11px]">
                 <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-500" /> Unlimited NutriGuide AI voice coaching</li>
@@ -726,62 +828,16 @@ function ProfilePage() {
               </ul>
             </div>
 
-            <form onSubmit={handleSubscribe} className="space-y-3">
-              <Field label="Cardholder Name">
-                <input
-                  required
-                  placeholder="e.g. Lethabo C Zwane"
-                  value={cardName}
-                  onChange={(e) => setCardName(e.target.value)}
-                  className="input"
-                />
-              </Field>
-
-              <Field label="Card Number">
-                <div className="relative">
-                  <input
-                    required
-                    maxLength={19}
-                    placeholder="4000 1234 5678 9010"
-                    value={cardNumber}
-                    onChange={(e) => setCardNumber(e.target.value)}
-                    className="input pl-10"
-                  />
-                  <CreditCard className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+            {/* EMBEDDED PAYPAL BUTTON CONTAINER */}
+            <div className="pt-2 min-h-[50px] flex flex-col items-center justify-center">
+              {loadingPayPal && (
+                <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  <span>Loading PayPal buttons...</span>
                 </div>
-              </Field>
-
-              <div className="grid grid-cols-2 gap-2">
-                <Field label="Expiry Date">
-                  <input
-                    required
-                    maxLength={5}
-                    placeholder="MM/YY"
-                    value={cardExpiry}
-                    onChange={(e) => setCardExpiry(e.target.value)}
-                    className="input"
-                  />
-                </Field>
-                <Field label="CVV">
-                  <input
-                    required
-                    maxLength={4}
-                    placeholder="123"
-                    value={cardCvv}
-                    onChange={(e) => setCardCvv(e.target.value)}
-                    className="input"
-                  />
-                </Field>
-              </div>
-
-              <button
-                type="submit"
-                disabled={isProcessing}
-                className="w-full cursor-pointer rounded-2xl bg-amber-500 py-3 text-xs font-bold text-white shadow-md hover:bg-amber-600 transition disabled:opacity-50 mt-2"
-              >
-                {isProcessing ? "Processing Payment..." : "Pay R49.00 & Unlock Premium"}
-              </button>
-            </form>
+              )}
+              <div id={`paypal-button-container-${PAYPAL_PLAN_ID}`} className="w-full" />
+            </div>
           </div>
         </div>
       )}

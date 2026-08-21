@@ -5,7 +5,7 @@ import { NutriFitLogo } from "@/components/app/logo";
 import { Download } from "lucide-react";
 import { InstallGuideModal } from "@/components/install-guide-modal";
 
-const ADMIN_EMAIL = "admin@nutrifit.co.za";
+const ADMIN_EMAIL = "officialnutrifit01@gmail.com";
 
 export const Route = createFileRoute("/auth")({
   component: AuthPage,
