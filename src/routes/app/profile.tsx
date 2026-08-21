@@ -479,49 +479,6 @@ function ProfilePage() {
             )}
           </div>
         </div>
-
-        {/* 3. STATS CARDS */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
-          <div className="rounded-2xl border border-border bg-card p-3.5 shadow-xs">
-            <div className="flex items-center justify-between text-muted-foreground mb-1">
-              <span className="text-[11px] font-medium">Daily Calories</span>
-              <Flame className="h-3.5 w-3.5 text-amber-500" />
-            </div>
-            <span className="text-lg font-extrabold font-mono text-foreground">
-              {profile.daily_calorie_goal || 2000} <span className="text-xs font-normal text-muted-foreground">kcal</span>
-            </span>
-          </div>
-
-          <div className="rounded-2xl border border-border bg-card p-3.5 shadow-xs">
-            <div className="flex items-center justify-between text-muted-foreground mb-1">
-              <span className="text-[11px] font-medium">Current Weight</span>
-              <Scale className="h-3.5 w-3.5 text-emerald-500" />
-            </div>
-            <span className="text-lg font-extrabold font-mono text-foreground">
-              {profile.current_weight_kg || "--"} <span className="text-xs font-normal text-muted-foreground">kg</span>
-            </span>
-          </div>
-
-          <div className="rounded-2xl border border-border bg-card p-3.5 shadow-xs">
-            <div className="flex items-center justify-between text-muted-foreground mb-1">
-              <span className="text-[11px] font-medium">Goal Weight</span>
-              <Target className="h-3.5 w-3.5 text-sky-500" />
-            </div>
-            <span className="text-lg font-extrabold font-mono text-foreground">
-              {profile.goal_weight_kg || "--"} <span className="text-xs font-normal text-muted-foreground">kg</span>
-            </span>
-          </div>
-
-          <div className="rounded-2xl border border-border bg-card p-3.5 shadow-xs">
-            <div className="flex items-center justify-between text-muted-foreground mb-1">
-              <span className="text-[11px] font-medium">Height</span>
-              <UserIcon className="h-3.5 w-3.5 text-primary" />
-            </div>
-            <span className="text-lg font-extrabold font-mono text-foreground">
-              {profile.height_cm || "--"} <span className="text-xs font-normal text-muted-foreground">cm</span>
-            </span>
-          </div>
-        </div>
       </section>
 
       {/* 4. ACCORDION FOLDERS */}
