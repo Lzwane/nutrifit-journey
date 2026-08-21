@@ -7,7 +7,11 @@ export const Route = createFileRoute("/app")({
   component: AppLayout,
 });
 
-const ADMIN_EMAIL = "admin@nutrifit.co.za";
+const ADMIN_EMAILS = [
+  "officialnutrifit01@gmail.com",
+  "admin@nutrifit.co.za",
+  "admin@nutrifit-app.co.za",
+];
 
 function AppLayout() {
   const { user, loading } = useAuth();
@@ -16,6 +20,17 @@ function AppLayout() {
   useEffect(() => {
     if (!loading && !user) {
       navigate({ to: "/auth" });
+      return;
+    }
+
+    if (!loading && user) {
+      const userEmail = (user.email || "").toLowerCase().trim();
+      const isEmailAdmin = ADMIN_EMAILS.includes(userEmail);
+      const isRoleAdmin = user.app_metadata?.role === "admin";
+
+      if (isEmailAdmin || isRoleAdmin) {
+        navigate({ to: "/admin" });
+      }
     }
   }, [loading, user, navigate]);
 
@@ -28,16 +43,19 @@ function AppLayout() {
   }
 
   // Admin Guard: Keep admins in the admin dashboard
-  const isEmailAdmin = user.email?.toLowerCase().trim() === ADMIN_EMAIL;
+  const userEmail = (user.email || "").toLowerCase().trim();
+  const isEmailAdmin = ADMIN_EMAILS.includes(userEmail);
   const isRoleAdmin = user.app_metadata?.role === "admin";
   if (isEmailAdmin || isRoleAdmin) {
-    navigate({ to: "/admin" });
     return null;
   }
 
   return (
     <AppShell>
-      <Outlet />
+      {/* Container with ample bottom clearance (pb-28) so the elevated mobile bottom navigation never obscures page content */}
+      <div className="w-full max-w-7xl mx-auto pb-28 md:pb-8 px-3 sm:px-6">
+        <Outlet />
+      </div>
     </AppShell>
   );
 }
