@@ -1,4 +1,4 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Home,
   Dumbbell,
@@ -8,10 +8,12 @@ import {
   User,
   Shield,
   UtensilsCrossed,
+  LogOut,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useSubscription } from "@/hooks/use-subscription";
 import { NutriFitLogo } from "@/components/app/logo";
+import { supabase } from "@/integrations/supabase/client";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -20,7 +22,13 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   const { user, isAdmin } = useAuth();
   const sub = useSubscription();
+  const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate({ to: "/auth" });
+  };
 
   const navItems = [
     {
@@ -134,19 +142,30 @@ export function AppShell({ children }: AppShellProps) {
           </nav>
         </div>
 
-        {/* User Card on Desktop Bottom */}
-        <div className="pt-4 border-t border-border flex items-center gap-3">
-          <div className="h-9 w-9 rounded-full bg-primary/10 text-primary font-bold text-xs flex items-center justify-center border border-primary/20">
-            {user?.email?.[0].toUpperCase() || "U"}
+        {/* User Card + Desktop Log Out Button */}
+        <div className="pt-4 border-t border-border space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-full bg-primary/10 text-primary font-bold text-xs flex items-center justify-center border border-primary/20">
+              {user?.email?.[0].toUpperCase() || "U"}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold text-foreground truncate">
+                {user?.email?.split("@")[0]}
+              </p>
+              <p className="text-[10px] text-muted-foreground truncate font-mono">
+                {isAdmin ? "Administrator" : sub.isPremium ? "Premium" : "Trial Member"}
+              </p>
+            </div>
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-bold text-foreground truncate">
-              {user?.email?.split("@")[0]}
-            </p>
-            <p className="text-[10px] text-muted-foreground truncate font-mono">
-              {isAdmin ? "Administrator" : sub.isPremium ? "Premium" : "Trial Member"}
-            </p>
-          </div>
+
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="w-full flex items-center justify-center gap-2 rounded-xl py-2 px-3 text-xs font-semibold text-rose-500 bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 transition cursor-pointer"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            <span>Sign Out</span>
+          </button>
         </div>
       </aside>
 
@@ -155,7 +174,7 @@ export function AppShell({ children }: AppShellProps) {
         {children}
       </main>
 
-      {/* 3. ELEVATED, SWIPE-OPTIMIZED MOBILE BOTTOM NAVIGATION */}
+      {/* 3. ELEVATED MOBILE BOTTOM NAVIGATION WITH LOG OUT OPTION */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-card/95 dark:bg-slate-950/95 backdrop-blur-xl border-t border-border/80 shadow-[0_-8px_30px_rgba(0,0,0,0.12)] pt-1.5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
         <div 
           className="flex items-center gap-2 overflow-x-auto no-scrollbar touch-pan-x overscroll-x-contain snap-x snap-mandatory h-14 px-3"
@@ -182,7 +201,7 @@ export function AppShell({ children }: AppShellProps) {
                   <span className="absolute top-0 w-8 h-0.5 bg-primary rounded-full" />
                 )}
 
-                {/* Standard Sized Icon */}
+                {/* Icon */}
                 <div className="relative flex items-center justify-center">
                   <Icon className={`h-5 w-5 transition-transform ${isActive ? "scale-105" : ""}`} />
 
@@ -200,6 +219,20 @@ export function AppShell({ children }: AppShellProps) {
               </Link>
             );
           })}
+
+          {/* Mobile Log Out Nav Item */}
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="relative flex flex-col items-center justify-center min-w-[72px] h-full py-1 px-1 transition-all cursor-pointer shrink-0 snap-center rounded-xl text-rose-500 hover:text-rose-400 active:scale-95"
+          >
+            <div className="relative flex items-center justify-center">
+              <LogOut className="h-5 w-5" />
+            </div>
+            <span className="text-[10px] tracking-tight mt-1 leading-none font-semibold">
+              Sign Out
+            </span>
+          </button>
         </div>
       </nav>
 

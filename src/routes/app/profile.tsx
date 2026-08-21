@@ -1,4 +1,4 @@
-import { createFileRoute, useSearch } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
@@ -13,7 +13,6 @@ import {
   Sun,
   Moon,
   Laptop,
-  CreditCard,
   Check,
   Target,
   UserCheck,
@@ -23,6 +22,7 @@ import {
   Flame,
   Scale,
   Loader2,
+  LogOut,
 } from "lucide-react";
 
 export const Route = createFileRoute("/app/profile")({
@@ -46,6 +46,7 @@ const PAYPAL_PLAN_ID = "P-7V56155591696325CNKDKF2Q";
 
 function ProfilePage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const searchParams: any = useSearch({ strict: false });
   const [profile, setProfile] = useState<any>(null);
   const [savedFlash, setSavedFlash] = useState(false);
@@ -109,6 +110,11 @@ function ProfilePage() {
   useEffect(() => {
     applyTheme(theme);
   }, []);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate({ to: "/auth" });
+  };
 
   const refresh = async () => {
     if (!user) return;
@@ -598,7 +604,7 @@ function ProfilePage() {
                         setProfile({ ...profile, raw_phone: val });
                       }}
                       className="w-full bg-transparent px-3 py-2.5 text-sm outline-none text-foreground font-medium"
-                      placeholder="63 233 7775"
+                      placeholder="82 123 4567"
                     />
                   </div>
                 </Field>
@@ -794,6 +800,26 @@ function ProfilePage() {
               </div>
             </div>
           )}
+        </div>
+
+        {/* 5. ACCOUNT ACTIONS & SIGN OUT */}
+        <div className="rounded-3xl border border-border bg-card p-6 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+              <LogOut className="h-4 w-4 text-rose-500" /> Account Authentication
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Sign out of your active NutriFit session across this browser.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="flex items-center gap-2 rounded-xl bg-rose-500/10 border border-rose-500/20 px-5 py-2.5 text-xs font-bold text-rose-500 hover:bg-rose-500/20 transition cursor-pointer"
+          >
+            <LogOut className="h-4 w-4" /> Sign Out of App
+          </button>
         </div>
       </div>
 
