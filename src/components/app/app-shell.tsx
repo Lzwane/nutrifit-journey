@@ -151,13 +151,16 @@ export function AppShell({ children }: AppShellProps) {
       </aside>
 
       {/* 2. MAIN CONTENT AREA */}
-      <main className="flex-1 w-full pt-6 md:pt-8 pb-28 md:pb-10 px-4 sm:px-6 md:px-8 max-w-7xl mx-auto">
+      <main className="flex-1 w-full pt-6 md:pt-8 pb-32 md:pb-10 px-4 sm:px-6 md:px-8 max-w-7xl mx-auto">
         {children}
       </main>
 
-      {/* 3. HORIZONTALLY SCROLLABLE MOBILE BOTTOM NAVIGATION */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-card/95 dark:bg-slate-950/95 backdrop-blur-xl border-t border-border/80 shadow-[0_-4px_24px_rgba(0,0,0,0.1)] pb-[env(safe-area-inset-bottom)]">
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth h-16 px-3">
+      {/* 3. ELEVATED, SWIPE-OPTIMIZED MOBILE BOTTOM NAVIGATION */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-card/95 dark:bg-slate-950/95 backdrop-blur-xl border-t border-border/80 shadow-[0_-8px_30px_rgba(0,0,0,0.12)] pt-1.5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+        <div 
+          className="flex items-center gap-2 overflow-x-auto no-scrollbar touch-pan-x overscroll-x-contain snap-x snap-mandatory h-14 px-3"
+          style={{ WebkitOverflowScrolling: "touch" }}
+        >
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = item.exact
@@ -168,20 +171,20 @@ export function AppShell({ children }: AppShellProps) {
               <Link
                 key={item.to}
                 to={item.to}
-                className={`relative flex flex-col items-center justify-center min-w-[76px] h-full py-1.5 px-1 transition-all cursor-pointer shrink-0 rounded-2xl ${
+                className={`relative flex flex-col items-center justify-center min-w-[72px] h-full py-1 px-1 transition-all cursor-pointer shrink-0 snap-center rounded-xl ${
                   isActive
                     ? "text-primary font-bold bg-primary/10"
-                    : "text-muted-foreground/80 hover:text-foreground font-medium"
+                    : "text-muted-foreground/80 hover:text-foreground font-medium active:scale-95"
                 }`}
               >
-                {/* Active Indicator Bar */}
+                {/* Active Indicator Line */}
                 {isActive && (
                   <span className="absolute top-0 w-8 h-0.5 bg-primary rounded-full" />
                 )}
 
-                {/* Icon */}
+                {/* Standard Sized Icon */}
                 <div className="relative flex items-center justify-center">
-                  <Icon className={`h-5 w-5 sm:h-5.5 sm:w-5.5 transition-transform ${isActive ? "scale-105" : ""}`} />
+                  <Icon className={`h-5 w-5 transition-transform ${isActive ? "scale-105" : ""}`} />
 
                   {item.isPro && (
                     <span className="absolute -top-1 -right-2.5 flex h-3 px-1 items-center justify-center rounded-full bg-amber-500 text-[7px] font-extrabold text-white shadow-xs">
