@@ -1,29 +1,28 @@
-# Welcome to your Lovable project
+## NutriFit — Intelligent Health & Fitness Platform
+NutriFit is a modern, responsive web application designed to simplify personal fitness, meal planning, and nutrition tracking. Powered by real-time analytics, AI coaching, and verified wellness resources, NutriFit helps users track their daily progress, follow guided routines, and connect with health-minded communities.
 
-This project was built with [Lovable](https://lovable.dev).
+## Key Features
+*Real-Time Dashboard:* Overview of daily calorie intake, active workout logs, and personalized fitness milestones.
 
-## Build with Lovable
+*Nutrition & Recipe Hub:* Access verified dietitian recipes with detailed macro breakdowns (protein, carbs, fats, calories) and step-by-step preparation guides.
 
-Open your project in the [Lovable editor](https://lovable.dev) and keep building.
+*Interactive Workout Player:* Guided routines tailored to different skill levels, from beginners to advanced strength training.
 
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: connect the project to GitHub and every change made in Lovable is committed straight to your repository.
-- **Full ownership**: this code is yours. Push to your repository and your changes sync back into Lovable, ready for your next prompt.
+*NutriGuide AI Coach:* Real-time conversational AI coaching for nutrition guidance, workout suggestions, and wellness tips.
 
-## Development
+*Community Chat Groups:* Dedicated community channels for runners, gym enthusiasts, and mindful lifestyle members.
 
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+*Admin Oversight Portal:* Executive dashboard with live database metrics, subscriber tracking, group roster management, and community recipe moderation.
 
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
-```
+*Automated PayPal Subscriptions:* Built-in monthly recurring billing system with automated debit processing and instant tier upgrades.
 
-## Built with
+## Tech Stack
+Frontend Framework: React 18, TypeScript, Vite
 
-- TanStack Start
-- TypeScript
-- React
-- Tailwind CSS
+Routing: TanStack Router (@tanstack/react-router)
+
+Styling & UI: Tailwind CSS, Lucide React Icons
+
+Database & Authentication: Supabase (PostgreSQL, Row Level Security, Auth)
+
+Payments & Subscriptions: PayPal JavaScript SDK (Subscription / Vault mode)
