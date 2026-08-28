@@ -14,7 +14,6 @@ import {
   Radio,
   Mic,
   Lock,
-  ShieldCheck,
   Check,
   ArrowRight,
 } from "lucide-react";
@@ -42,24 +41,6 @@ function cleanTextForSpeech(text: string): string {
     .trim();
 }
 
-function speakText(text: string, onEnd?: () => void) {
-  if (!("speechSynthesis" in window)) return;
-  window.speechSynthesis.cancel();
-
-  const utterance = new SpeechSynthesisUtterance(cleanTextForSpeech(text));
-  utterance.rate = 1.0;
-  utterance.pitch = 1.0;
-
-  const voices = window.speechSynthesis.getVoices();
-  const naturalVoice = voices.find(
-    (v) => v.lang.startsWith("en") && (v.name.includes("Natural") || v.name.includes("Google"))
-  );
-  if (naturalVoice) utterance.voice = naturalVoice;
-
-  if (onEnd) utterance.onend = onEnd;
-  window.speechSynthesis.speak(utterance);
-}
-
 function AICoachPage() {
   const { user } = useAuth();
   const sub = useSubscription();
@@ -70,18 +51,16 @@ function AICoachPage() {
   const subscriptionLoading = sub.loading;
 
   const [activeTab, setActiveTab] = useState<"voice" | "chat">("voice");
-
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
       sender: "coach",
-      text: "Hello! I am NutriGuide AI, your personal nutrition & fitness assistant. Ask me anything about your meals, workouts, or calories!",
+      text: "Hello! I am NutriGuide AI, your personal nutrition and fitness coach. Ask me anything about your workout routines, meal plans, macro splits, or calorie targets!",
     },
   ]);
   const [inputText, setInputText] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Live Hands-Free Voice States (ChatGPT/Gemini Style)
   const [isVoiceActive, setIsVoiceActive] = useState(false);
   const [voiceState, setVoiceState] = useState<"idle" | "listening" | "thinking" | "speaking">("idle");
 
@@ -89,7 +68,10 @@ function AICoachPage() {
   const recognitionRef = useRef<any>(null);
   const isVoiceActiveRef = useRef<boolean>(false);
   const voiceStateRef = useRef<string>("idle");
-  const transcriptBufferRef = useRef<string>("");
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const speechAccumulatorRef = useRef<string>("");
+  const silenceTimerRef = useRef<any>(null);
 
   useEffect(() => {
     voiceStateRef.current = voiceState;
@@ -103,7 +85,50 @@ function AICoachPage() {
     scrollToBottom();
   }, [messages]);
 
-  // Web Speech Recognition Setup
+  const speakText = (text: string, onEnd?: () => void) => {
+    if (!("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(cleanTextForSpeech(text));
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+
+    const voices = window.speechSynthesis.getVoices();
+    const naturalVoice = voices.find(
+      (v) => v.lang.startsWith("en") && (v.name.includes("Natural") || v.name.includes("Google") || v.name.includes("Samantha"))
+    );
+    if (naturalVoice) utterance.voice = naturalVoice;
+
+    utterance.onend = () => {
+      if (isVoiceActiveRef.current) {
+        setVoiceState("listening");
+        try {
+          recognitionRef.current?.start();
+        } catch (e) {}
+      } else {
+        setVoiceState("idle");
+      }
+      if (onEnd) onEnd();
+    };
+
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const interruptCoach = () => {
+    if (window.speechSynthesis?.speaking) {
+      window.speechSynthesis.cancel();
+    }
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    setLoading(false);
+  };
+
   useEffect(() => {
     if (!hasAccess) return;
 
@@ -112,52 +137,65 @@ function AICoachPage() {
 
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = false;
+      recognition.continuous = true;
+      recognition.interimResults = true;
       recognition.lang = "en-US";
 
       recognition.onstart = () => {
-        if (isVoiceActiveRef.current) {
+        if (isVoiceActiveRef.current && voiceStateRef.current !== "speaking" && voiceStateRef.current !== "thinking") {
           setVoiceState("listening");
         }
       };
 
       recognition.onresult = (event: any) => {
-        const transcript = event.results[0]?.[0]?.transcript;
-        if (transcript) {
-          transcriptBufferRef.current = transcript;
+        if (!isVoiceActiveRef.current) return;
+        if (voiceStateRef.current === "speaking" || voiceStateRef.current === "thinking") {
+          return;
+        }
+
+        let interimText = "";
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            speechAccumulatorRef.current += " " + event.results[i][0].transcript;
+          } else {
+            interimText += event.results[i][0].transcript;
+          }
+        }
+
+        const currentCaptured = (speechAccumulatorRef.current + " " + interimText).trim();
+
+        if (currentCaptured) {
+          if (silenceTimerRef.current) {
+            clearTimeout(silenceTimerRef.current);
+          }
+
+          silenceTimerRef.current = setTimeout(() => {
+            const finalPrompt = speechAccumulatorRef.current.trim() || currentCaptured;
+            speechAccumulatorRef.current = "";
+            silenceTimerRef.current = null;
+
+            if (finalPrompt && isVoiceActiveRef.current) {
+              handleHandsFreeQuery(finalPrompt);
+            }
+          }, 1500);
         }
       };
 
       recognition.onend = () => {
-        if (!isVoiceActiveRef.current) {
-          setVoiceState("idle");
-          return;
-        }
-
-        const capturedPrompt = transcriptBufferRef.current.trim();
-        transcriptBufferRef.current = "";
-
-        if (capturedPrompt) {
-          handleHandsFreeQuery(capturedPrompt);
-        } else if (
-          isVoiceActiveRef.current &&
-          voiceStateRef.current !== "speaking" &&
-          voiceStateRef.current !== "thinking"
-        ) {
+        if (isVoiceActiveRef.current && voiceStateRef.current !== "speaking" && voiceStateRef.current !== "thinking") {
           try {
             recognition.start();
           } catch (e) {}
         }
       };
 
-      recognition.onerror = () => {
-        if (isVoiceActiveRef.current && voiceStateRef.current === "listening") {
+      recognition.onerror = (e: any) => {
+        if (e.error !== "no-speech" && isVoiceActiveRef.current) {
           setTimeout(() => {
             try {
               recognition.start();
-            } catch (e) {}
-          }, 800);
+            } catch (err) {}
+          }, 600);
         }
       };
 
@@ -166,50 +204,63 @@ function AICoachPage() {
 
     return () => {
       window.speechSynthesis?.cancel();
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     };
   }, [hasAccess]);
 
-  const callGeminiAPI = async (prompt: string): Promise<string> => {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  const callClaudeDirect = async (prompt: string, signal?: AbortSignal): Promise<string> => {
+    const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
+    const workspaceId = import.meta.env.VITE_ANTHROPIC_WORKSPACE_ID;
 
     if (!apiKey) {
-      throw new Error("Gemini API Key missing in .env (VITE_GEMINI_API_KEY)");
+      throw new Error("Missing VITE_ANTHROPIC_API_KEY in your .env file.");
     }
 
-    const systemInstruction =
-      "You are NutriGuide AI, an encouraging personal nutrition & fitness coach. " +
-      "Provide practical, concise answers (1 to 2 short sentences max). " +
-      "STRICT RULE: Do NOT use markdown formatting, bold text (**), asterisks (*), or bullet points. " +
-      "Write purely plain text suitable for direct speech.";
+    const headers: Record<string, string> = {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+      "anthropic-dangerous-direct-browser-access": "true",
+    };
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`;
+    if (workspaceId) {
+      headers["anthropic-workspace-id"] = workspaceId;
+    }
 
-    const response = await fetch(url, {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
+      signal,
       body: JSON.stringify({
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: `${systemInstruction}\n\nUser Question: ${prompt}` }],
-          },
-        ],
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 450,
+        system:
+          "You are NutriGuide AI, an encouraging and highly knowledgeable personal nutrition & fitness coach. " +
+          "Provide detailed, actionable, and encouraging explanations. " +
+          "When asked about meals, break down estimated macros (protein, carbs, fats) and calorie counts clearly. " +
+          "When asked about workouts, explain proper form, sets, reps, and recovery techniques. " +
+          "STRICT RULE: Do NOT use markdown formatting, bold markers (**), bullet asterisks (*), or headers (#). " +
+          "Write clean, natural plain text with smooth sentence flow suitable for direct voice reading.",
+        messages: [{ role: "user", content: prompt }],
       }),
     });
 
+    const data = await response.json();
+
     if (!response.ok) {
-      const errData = await response.json();
-      throw new Error(errData.error?.message || "Failed to fetch response from Gemini API");
+      console.error("Anthropic Error Response:", data);
+      throw new Error(data.error?.message || "Anthropic API rejected request.");
     }
 
-    const data = await response.json();
-    return (
-      data.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "I couldn't process that question. Try asking again!"
-    );
+    return data.content?.[0]?.text || "I could not generate a response. Please try again.";
   };
 
   const handleHandsFreeQuery = async (userPrompt: string) => {
+    interruptCoach();
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setVoiceState("thinking");
     setLoading(true);
 
@@ -217,41 +268,79 @@ function AICoachPage() {
     setMessages((prev) => [...prev, userMsg]);
 
     try {
-      const reply = await callGeminiAPI(userPrompt);
+      const reply = await callClaudeDirect(userPrompt, controller.signal);
       const cleanReply = cleanTextForSpeech(reply);
 
       const coachMsg: Message = { id: (Date.now() + 1).toString(), sender: "coach", text: cleanReply };
       setMessages((prev) => [...prev, coachMsg]);
 
       setVoiceState("speaking");
-      speakText(cleanReply, () => {
-        if (isVoiceActiveRef.current) {
-          setVoiceState("listening");
-          try {
-            recognitionRef.current?.start();
-          } catch (e) {}
-        } else {
-          setVoiceState("idle");
-        }
-      });
-    } catch (err) {
-      setVoiceState("idle");
+      speakText(cleanReply);
+    } catch (err: any) {
+      if (err.name === "AbortError") return;
+
+      console.error("Voice query failed:", err);
+      setVoiceState("listening");
+      setMessages((prev) => [
+        ...prev,
+        { id: Date.now().toString(), sender: "coach", text: `Error: ${err.message || "Failed to reach Claude API."}` },
+      ]);
+      try {
+        recognitionRef.current?.start();
+      } catch (e) {}
     } finally {
       setLoading(false);
     }
   };
 
+  const handleOrbClick = () => {
+    if (!recognitionRef.current) return;
+
+    speechAccumulatorRef.current = "";
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+
+    if (!isVoiceActive) {
+      isVoiceActiveRef.current = true;
+      setIsVoiceActive(true);
+      setVoiceState("listening");
+      try {
+        recognitionRef.current.start();
+      } catch (e) {}
+      return;
+    }
+
+    interruptCoach();
+    setVoiceState("listening");
+    try {
+      recognitionRef.current.stop();
+      setTimeout(() => {
+        try {
+          recognitionRef.current.start();
+        } catch (e) {}
+      }, 150);
+    } catch (e) {}
+  };
+
   const toggleLiveVoiceMode = () => {
     if (!recognitionRef.current) {
-      alert("Voice features are supported in Chrome, Edge, or Safari.");
+      alert("Voice input is supported in Chrome, Edge, and Safari.");
       return;
+    }
+
+    speechAccumulatorRef.current = "";
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
     }
 
     if (isVoiceActive) {
       isVoiceActiveRef.current = false;
       setIsVoiceActive(false);
       setVoiceState("idle");
-      window.speechSynthesis?.cancel();
+      interruptCoach();
       try {
         recognitionRef.current.stop();
       } catch (e) {}
@@ -259,7 +348,7 @@ function AICoachPage() {
       isVoiceActiveRef.current = true;
       setIsVoiceActive(true);
       setVoiceState("listening");
-      window.speechSynthesis?.cancel();
+      interruptCoach();
       try {
         recognitionRef.current.start();
       } catch (e) {}
@@ -270,6 +359,7 @@ function AICoachPage() {
     if (e) e.preventDefault();
     if (!inputText.trim() || loading) return;
 
+    interruptCoach();
     const userPrompt = inputText.trim();
     setInputText("");
     setLoading(true);
@@ -278,44 +368,43 @@ function AICoachPage() {
     setMessages((prev) => [...prev, userMsg]);
 
     try {
-      const reply = await callGeminiAPI(userPrompt);
+      const reply = await callClaudeDirect(userPrompt);
       const cleanReply = cleanTextForSpeech(reply);
 
       const coachMsg: Message = { id: (Date.now() + 1).toString(), sender: "coach", text: cleanReply };
       setMessages((prev) => [...prev, coachMsg]);
     } catch (err: any) {
+      console.error("Text chat failed:", err);
       setMessages((prev) => [
         ...prev,
-        { id: Date.now().toString(), sender: "coach", text: "Sorry, I couldn't process that right now." },
+        { id: Date.now().toString(), sender: "coach", text: `Error: ${err.message || "Failed to reach Claude API."}` },
       ]);
     } finally {
       setLoading(false);
     }
   };
 
-  // 1. Loading State while checking subscription
   if (subscriptionLoading) {
     return (
       <div className="flex h-64 items-center justify-center text-xs text-muted-foreground font-sans">
-        <Loader2 className="h-5 w-5 animate-spin text-primary mr-2" /> Checking access...
+        <Loader2 className="h-5 w-5 animate-spin text-emerald-500 shrink-0 mr-2" /> Checking access...
       </div>
     );
   }
 
-  // 2. Paywall Guard: Block features on Free Tier (when trial has expired and user is not on Premium)
   if (!hasAccess) {
     return (
       <div className="flex-1 flex items-center justify-center p-4 font-sans min-h-[70vh]">
-        <div className="max-w-md w-full text-center space-y-6 rounded-3xl border border-border bg-card p-6 sm:p-8 shadow-xl animate-in fade-in">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-amber-500/10 border border-amber-500/20 text-amber-500 shadow-inner">
-            <Lock className="h-8 w-8" />
+        <div className="max-w-md w-full text-center space-y-6 rounded-3xl border border-border bg-card p-6 sm:p-8 shadow-xl">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-amber-500/10 border border-amber-500/20 text-amber-500 shrink-0">
+            <Lock className="h-8 w-8 shrink-0" />
           </div>
 
           <div className="space-y-2">
-            <span className="rounded-full bg-amber-500/10 border border-amber-500/20 px-3 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-500">
+            <span className="rounded-full bg-amber-500/10 border border-amber-500/20 px-3 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-500 inline-block">
               Premium Feature
             </span>
-            <h2 className="font-display text-2xl font-extrabold text-foreground">
+            <h2 className="text-2xl font-extrabold text-foreground">
               NutriGuide AI Voice Coach
             </h2>
             <p className="text-xs text-muted-foreground leading-relaxed">
@@ -326,7 +415,7 @@ function AICoachPage() {
           <div className="rounded-2xl border border-border bg-muted/30 p-4 text-left text-xs space-y-2 text-muted-foreground">
             <div className="flex items-center gap-2">
               <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-              <span>Unlimited live hands-free conversational AI</span>
+              <span>Unlimited live conversational AI voice coach</span>
             </div>
             <div className="flex items-center gap-2">
               <Check className="h-4 w-4 text-emerald-500 shrink-0" />
@@ -343,9 +432,9 @@ function AICoachPage() {
             search={{ subscribe: "true" }}
             className="w-full flex items-center justify-center gap-2 rounded-2xl bg-amber-500 hover:bg-amber-600 active:scale-95 py-3.5 text-xs font-bold text-white shadow-md transition uppercase tracking-wider cursor-pointer"
           >
-            <Sparkles className="h-4 w-4" />
+            <Sparkles className="h-4 w-4 shrink-0" />
             <span>Unlock Premium (R49.00 / mo)</span>
-            <ArrowRight className="h-3.5 w-3.5" />
+            <ArrowRight className="h-3.5 w-3.5 shrink-0" />
           </Link>
         </div>
       </div>
@@ -353,38 +442,35 @@ function AICoachPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col w-full h-full min-h-[82vh] justify-between relative overflow-hidden font-sans">
-      {/* RESPONSIVE HEADER */}
-      <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-border/60">
-        <h1 className="font-display text-lg font-extrabold text-foreground tracking-tight md:hidden">
+    <div className="flex-1 flex flex-col w-full min-h-[75vh] sm:min-h-[82vh] justify-between relative overflow-hidden font-sans">
+      {/* TOP HEADER & NAVIGATION TOGGLE */}
+      <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-border/60 shrink-0">
+        <h1 className="text-base sm:text-lg font-extrabold text-foreground tracking-tight md:hidden">
           NutriGuide AI
         </h1>
 
         <div className="hidden md:flex items-center gap-3">
-          <div
-            className="flex h-10 w-10 items-center justify-center rounded-2xl shadow-inner border border-emerald-500/20 shrink-0"
-            style={{ backgroundColor: "rgba(16, 185, 129, 0.1)" }}
-          >
-            <Bot className="h-5 w-5" style={{ color: "var(--brand-green, #10b981)" }} />
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 shrink-0">
+            <Bot className="h-5 w-5 shrink-0" />
           </div>
           <div>
             <h1 className="text-base font-extrabold text-foreground leading-none">NutriGuide AI</h1>
-            <p className="text-[11px] text-muted-foreground mt-1">Live Conversational Intelligence</p>
+            <p className="text-[11px] text-muted-foreground mt-1">Tap Circle to Interrupt &amp; Speak</p>
           </div>
         </div>
 
-        {/* RESPONSIVE TOGGLE SWITCH */}
-        <div className="flex items-center gap-1 rounded-2xl bg-card p-1 border border-border shadow-xs">
+        {/* TOGGLE WITH HIGH-CONTRAST EMERALD ACTIVE PILL */}
+        <div className="flex items-center gap-1 rounded-2xl bg-muted/60 p-1 border border-border shadow-xs shrink-0">
           <button
             type="button"
             onClick={() => setActiveTab("voice")}
-            className={`cursor-pointer flex items-center gap-1 sm:gap-1.5 rounded-xl px-2.5 sm:px-3.5 py-1.5 text-[11px] sm:text-xs font-extrabold transition ${
+            className={`cursor-pointer flex items-center gap-1 sm:gap-1.5 rounded-xl px-3 py-1.5 text-[11px] sm:text-xs font-extrabold transition-all duration-200 ${
               activeTab === "voice"
-                ? "bg-primary text-primary-foreground shadow-xs"
+                ? "bg-emerald-500 text-white shadow-sm ring-1 ring-emerald-600/30"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            <Radio className="h-3.5 w-3.5" />
+            <Radio className="h-3.5 w-3.5 shrink-0" />
             <span>
               <span className="hidden sm:inline">Live </span>Voice
             </span>
@@ -396,13 +482,13 @@ function AICoachPage() {
               setActiveTab("chat");
               if (isVoiceActive) toggleLiveVoiceMode();
             }}
-            className={`cursor-pointer flex items-center gap-1 sm:gap-1.5 rounded-xl px-2.5 sm:px-3.5 py-1.5 text-[11px] sm:text-xs font-extrabold transition ${
+            className={`cursor-pointer flex items-center gap-1 sm:gap-1.5 rounded-xl px-3 py-1.5 text-[11px] sm:text-xs font-extrabold transition-all duration-200 ${
               activeTab === "chat"
-                ? "bg-primary text-primary-foreground shadow-xs"
+                ? "bg-emerald-500 text-white shadow-sm ring-1 ring-emerald-600/30"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            <MessageSquare className="h-3.5 w-3.5" />
+            <MessageSquare className="h-3.5 w-3.5 shrink-0" />
             <span>
               <span className="hidden sm:inline">Text </span>Chat
             </span>
@@ -412,110 +498,97 @@ function AICoachPage() {
 
       {/* VIEW 1: LIVE VOICE MODE */}
       {activeTab === "voice" ? (
-        <div className="flex-1 flex flex-col items-center justify-between py-6 sm:py-8 px-4 text-center relative overflow-hidden my-auto w-full">
-          {/* AMBIENT BACKGROUND GLOW */}
+        <div className="flex-1 flex flex-col items-center justify-between py-6 px-4 text-center relative overflow-hidden w-full my-auto">
+          {/* AMBIENT GLOW */}
           <div
-            className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[24rem] w-[24rem] sm:h-[36rem] sm:w-[36rem] rounded-full blur-3xl transition-opacity duration-1000 pointer-events-none ${
+            className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-72 w-72 sm:h-96 sm:w-96 rounded-full blur-3xl pointer-events-none transition-opacity duration-1000 ${
               voiceState === "listening"
-                ? "opacity-40 animate-pulse"
+                ? "opacity-35 bg-emerald-500/40"
                 : voiceState === "speaking"
-                ? "opacity-50"
-                : "opacity-15"
+                ? "opacity-40 bg-orange-500/40"
+                : "opacity-10 bg-emerald-500/20"
             }`}
-            style={{
-              background:
-                voiceState === "speaking"
-                  ? "radial-gradient(circle, var(--brand-orange, #f97316) 0%, transparent 70%)"
-                  : "radial-gradient(circle, var(--brand-green, #10b981) 0%, transparent 70%)",
-            }}
           />
 
-          {/* MAIN CENTER ORB GRAPHIC */}
-          <div className="relative my-auto flex flex-col items-center justify-center z-10 py-4">
-            <div
-              className={`relative flex h-48 w-48 sm:h-64 sm:w-64 items-center justify-center rounded-full transition-all duration-700 shadow-2xl ${
+          {/* MAIN INTERACTIVE ORB */}
+          <div className="relative my-auto flex flex-col items-center justify-center z-10 py-2">
+            <button
+              type="button"
+              onClick={handleOrbClick}
+              aria-label={voiceState === "speaking" ? "Interrupt AI and speak" : "Start speaking"}
+              className={`relative flex h-44 w-44 sm:h-56 sm:w-56 items-center justify-center rounded-full transition-all duration-300 shadow-2xl cursor-pointer active:scale-95 shrink-0 border border-white/10 ${
                 voiceState === "listening"
-                  ? "scale-105 sm:scale-110 shadow-emerald-500/30"
+                  ? "bg-emerald-500 ring-8 ring-emerald-500/20 shadow-emerald-500/40 scale-105"
                   : voiceState === "thinking"
-                  ? "scale-100 sm:scale-105 shadow-amber-500/30"
+                  ? "bg-amber-500 ring-8 ring-amber-500/20 shadow-amber-500/40"
                   : voiceState === "speaking"
-                  ? "scale-105 sm:scale-110 shadow-orange-500/30"
-                  : "scale-100 shadow-none"
+                  ? "bg-orange-500 ring-8 ring-orange-500/20 shadow-orange-500/40 scale-105"
+                  : "bg-muted text-muted-foreground border-border shadow-none"
               }`}
-              style={{
-                background:
-                  voiceState === "listening"
-                    ? "linear-gradient(135deg, #10b981 0%, #059669 100%)"
-                    : voiceState === "thinking"
-                    ? "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)"
-                    : voiceState === "speaking"
-                    ? "linear-gradient(135deg, #f97316 0%, #ea580c 100%)"
-                    : "var(--muted)",
-              }}
             >
-              {/* DYNAMIC AUDIO WAVE RIPPLES */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 pointer-events-none">
                 {[1, 2, 3, 4, 5].map((bar) => (
                   <span
                     key={bar}
-                    className={`w-2.5 rounded-full bg-white transition-all duration-300 ${
+                    className={`w-2 rounded-full bg-white transition-all duration-200 ${
                       voiceState === "listening"
-                        ? "h-12 sm:h-20 animate-pulse"
+                        ? "h-10 sm:h-16 animate-pulse"
                         : voiceState === "speaking"
-                        ? "h-14 sm:h-24 animate-bounce"
+                        ? "h-12 sm:h-20 animate-bounce"
                         : voiceState === "thinking"
-                        ? "h-5 animate-ping"
-                        : "h-4 opacity-50"
+                        ? "h-4 animate-ping"
+                        : "h-3 opacity-40 bg-foreground"
                     }`}
-                    style={{ animationDelay: `${bar * 150}ms` }}
+                    style={{ animationDelay: `${bar * 120}ms` }}
                   />
                 ))}
               </div>
-            </div>
+            </button>
 
-            {/* LIVE STATE STATUS INDICATOR */}
-            <div className="mt-6 sm:mt-8 font-extrabold text-xs sm:text-base tracking-wide">
+            {/* STATUS INDICATOR */}
+            <div className="mt-5 sm:mt-7 font-extrabold text-xs sm:text-sm tracking-wide flex items-center justify-center min-h-6">
               {voiceState === "listening" && (
                 <span className="text-emerald-500 flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-ping" /> Listening... Speak naturally
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
+                  Listening... Speak freely
                 </span>
               )}
               {voiceState === "thinking" && (
                 <span className="text-amber-500 flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Thinking...
+                  <Loader2 className="h-4 w-4 animate-spin shrink-0" /> Analyzing response...
                 </span>
               )}
               {voiceState === "speaking" && (
                 <span className="text-orange-500 flex items-center gap-2">
-                  <Volume2 className="h-4 w-4 animate-pulse" /> NutriGuide is speaking...
+                  <Volume2 className="h-4 w-4 animate-pulse shrink-0" /> Speaking (Tap circle to interrupt)
                 </span>
               )}
               {voiceState === "idle" && (
                 <span className="text-muted-foreground text-xs font-semibold">
-                  Tap below to start live hands-free conversation
+                  Tap circle to start voice session
                 </span>
               )}
             </div>
           </div>
 
           {/* ACTION BUTTON */}
-          <div className="relative z-10 w-full max-w-xs pt-2">
+          <div className="relative z-10 w-full max-w-xs pt-3">
             <button
               type="button"
               onClick={toggleLiveVoiceMode}
-              className={`w-full cursor-pointer flex items-center justify-center gap-2.5 rounded-full py-3.5 sm:py-4 px-6 text-xs sm:text-base font-extrabold text-white shadow-xl transition active:scale-95 ${
+              className={`w-full cursor-pointer flex items-center justify-center gap-2 rounded-full py-3.5 px-6 text-xs sm:text-sm font-extrabold text-white shadow-lg transition active:scale-95 shrink-0 ${
                 isVoiceActive
-                  ? "bg-rose-600 hover:bg-rose-500 shadow-rose-600/30"
+                  ? "bg-rose-600 hover:bg-rose-700 shadow-rose-600/30"
                   : "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/30"
               }`}
             >
               {isVoiceActive ? (
                 <>
-                  <Square className="h-4 w-4 sm:h-5 sm:w-5 fill-current" /> End Live Session
+                  <Square className="h-4 w-4 fill-current shrink-0" /> End Voice Session
                 </>
               ) : (
                 <>
-                  <Mic className="h-4 w-4 sm:h-5 sm:w-5" /> Start Live Voice Session
+                  <Mic className="h-4 w-4 shrink-0" /> Start Live Voice Session
                 </>
               )}
             </button>
@@ -523,41 +596,41 @@ function AICoachPage() {
         </div>
       ) : (
         /* VIEW 2: TEXT CHAT FEED */
-        <div className="flex-1 flex flex-col justify-between w-full mx-auto pt-4 space-y-4">
-          <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+        <div className="flex-1 flex flex-col justify-between w-full mx-auto pt-3 space-y-3 min-h-0">
+          <div className="flex-1 overflow-y-auto space-y-3 pr-1 min-h-0">
             {messages.map((m) => (
               <div
                 key={m.id}
-                className={`flex items-start gap-3 ${
+                className={`flex items-start gap-2.5 ${
                   m.sender === "user" ? "flex-row-reverse" : "flex-row"
                 }`}
               >
                 <div
-                  className={`flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-2xl text-xs font-bold ${
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-xs font-bold ${
                     m.sender === "user"
-                      ? "bg-primary text-primary-foreground shadow-xs"
+                      ? "bg-emerald-500 text-white shadow-xs"
                       : "bg-amber-500/10 text-amber-500 border border-amber-500/20"
                   }`}
                 >
-                  {m.sender === "user" ? <User className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
+                  {m.sender === "user" ? <User className="h-4 w-4 shrink-0" /> : <Sparkles className="h-4 w-4 shrink-0" />}
                 </div>
 
                 <div
-                  className={`group relative max-w-[82%] sm:max-w-[75%] rounded-2xl px-4 py-3 text-xs sm:text-sm leading-relaxed shadow-xs ${
+                  className={`group relative max-w-[85%] sm:max-w-[78%] rounded-2xl px-4 py-2.5 text-xs sm:text-sm leading-relaxed shadow-xs ${
                     m.sender === "user"
-                      ? "bg-primary text-primary-foreground font-semibold"
+                      ? "bg-emerald-500 text-white font-medium"
                       : "bg-card border border-border text-foreground"
                   }`}
                 >
-                  <p>{m.text}</p>
+                  <p className="whitespace-pre-line">{m.text}</p>
 
                   {m.sender === "coach" && (
                     <button
                       type="button"
                       onClick={() => speakText(m.text)}
-                      className="mt-2 flex items-center gap-1.5 text-[10px] font-bold text-primary hover:underline cursor-pointer"
+                      className="mt-2 flex items-center gap-1.5 text-[10px] font-bold text-emerald-500 hover:underline cursor-pointer"
                     >
-                      <Volume2 className="h-3 w-3" /> Replay
+                      <Volume2 className="h-3 w-3 shrink-0" /> Replay Audio
                     </button>
                   )}
                 </div>
@@ -566,7 +639,7 @@ function AICoachPage() {
 
             {loading && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground p-2">
-                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                <Loader2 className="h-4 w-4 animate-spin text-emerald-500 shrink-0" />
                 <span>NutriGuide AI is thinking...</span>
               </div>
             )}
@@ -574,20 +647,20 @@ function AICoachPage() {
             <div ref={messagesEndRef} />
           </div>
 
-          <form onSubmit={handleSendText} className="flex items-center gap-2 pt-2">
+          <form onSubmit={handleSendText} className="flex items-center gap-2 pt-2 border-t border-border/40 shrink-0">
             <input
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder="Type a message for NutriGuide AI..."
-              className="flex-1 rounded-2xl border border-input bg-card px-4 py-3 sm:py-3.5 text-xs sm:text-sm text-foreground outline-none focus:ring-2 focus:ring-primary shadow-xs"
+              placeholder="Ask about calories, macros, or workouts..."
+              className="flex-1 rounded-2xl border border-input bg-card px-4 py-3 text-xs sm:text-sm text-foreground outline-none focus:ring-2 focus:ring-emerald-500 shadow-xs"
             />
 
             <button
               type="submit"
               disabled={!inputText.trim() || loading}
-              className="cursor-pointer flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-xs transition hover:bg-primary/90 disabled:opacity-50"
+              className="cursor-pointer flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-500 text-white shadow-xs transition hover:bg-emerald-600 disabled:opacity-50"
             >
-              <Send className="h-4 w-4" />
+              <Send className="h-4 w-4 shrink-0" />
             </button>
           </form>
         </div>

@@ -19,6 +19,7 @@ import {
   Clock,
   ArrowRight,
   ShieldCheck,
+  Footprints,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
@@ -90,6 +91,7 @@ function HomePage() {
   const [todayFat, setTodayFat] = useState(0);
   const [todayWaterMl, setTodayWaterMl] = useState(0);
   const [todayWorkouts, setTodayWorkouts] = useState(0);
+  const [todaySteps, setTodaySteps] = useState(3420);
 
   const [bannerState, setBannerState] = useState<"visible" | "exiting" | "hidden">("hidden");
 
@@ -160,7 +162,6 @@ function HomePage() {
         setTip(t[getDailyIndex(today, t.length)].text);
       }
 
-      // Calculate Macro & Nutrition Aggregates
       const foodList = foods ?? [];
       setTodayCalories(foodList.reduce((sum, r: any) => sum + (r.calories ?? 0), 0));
       setTodayProtein(foodList.reduce((sum, r: any) => sum + (r.protein_g ?? 0), 0));
@@ -181,17 +182,14 @@ function HomePage() {
 
   const displayName = formatName(rawName);
 
-  // Targets & Goals
   const calGoal = profile?.daily_calorie_goal ?? 2000;
   const calRemaining = calGoal - todayCalories;
   const isCalExceeded = calRemaining < 0;
 
-  const waterL = todayWaterMl / 1000;
-  const waterGoal = profile?.daily_water_goal_l ?? 2.5;
-
   const proteinGoal = Math.round((calGoal * 0.3) / 4);
   const carbsGoal = Math.round((calGoal * 0.45) / 4);
   const fatGoal = Math.round((calGoal * 0.25) / 9);
+  const stepsGoal = 5000;
 
   const lost =
     profile?.starting_weight_kg && profile?.current_weight_kg
@@ -199,38 +197,39 @@ function HomePage() {
       : 0;
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto font-sans pb-10">
+    <div className="space-y-6 sm:space-y-8 max-w-5xl mx-auto font-sans pb-12 w-full">
       {/* CELEBRATION POP-IN BANNER */}
       {bannerState !== "hidden" && (
         <div
-          className={`relative overflow-hidden rounded-3xl bg-primary p-5 text-primary-foreground shadow-xl ${
+          className={`relative overflow-hidden rounded-3xl bg-emerald-600 p-5 text-white shadow-xl ${
             bannerState === "visible"
               ? "animate-in fade-in slide-in-from-top-4 duration-500"
               : "animate-out fade-out slide-out-to-top-4 fill-mode-forwards duration-700"
           }`}
         >
-          <span className="absolute -top-2 left-10 text-2xl animate-bounce">🎉</span>
-          <span className="absolute bottom-1 right-16 text-xl animate-pulse">✨</span>
-          <span className="absolute top-2 right-28 text-xl animate-bounce delay-150">🏋️‍♂️</span>
+          <span className="absolute -top-2 left-10 text-2xl select-none">🎉</span>
+          <span className="absolute bottom-1 right-16 text-xl select-none">✨</span>
+          <span className="absolute top-2 right-28 text-xl select-none">🏋️‍♂️</span>
 
           <div className="flex items-center justify-between pr-8">
             <div className="flex items-center gap-3.5">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary-foreground/10 text-primary-foreground shadow-inner">
-                <Sparkle className="h-6 w-6 animate-spin" />
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/20 text-white shadow-inner">
+                <Sparkle className="h-6 w-6 shrink-0 animate-spin" />
               </div>
               <div>
-                <h3 className="font-display text-base font-extrabold">Welcome back, {displayName}!</h3>
-                <p className="text-xs text-primary-foreground/80">Ready to crush your daily targets?</p>
+                <h3 className="text-base font-extrabold text-white">Welcome back, {displayName}!</h3>
+                <p className="text-xs text-white/90">Ready to crush your daily targets?</p>
               </div>
             </div>
           </div>
 
           <button
+            type="button"
             onClick={handleManualDismiss}
-            className="absolute right-3 top-3 cursor-pointer rounded-xl p-1.5 text-primary-foreground/70 hover:bg-primary-foreground/10 hover:text-primary-foreground transition"
+            className="absolute right-3 top-3 cursor-pointer rounded-xl p-1.5 text-white/80 hover:bg-white/20 hover:text-white transition"
             aria-label="Dismiss welcome"
           >
-            <X className="h-4 w-4" />
+            <X className="h-4 w-4 shrink-0" />
           </button>
         </div>
       )}
@@ -240,14 +239,14 @@ function HomePage() {
         <div className="rounded-3xl border border-amber-500/30 bg-amber-500/10 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm animate-in fade-in">
           <div className="flex items-center gap-3.5">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-md">
-              <Lock className="h-5 w-5" />
+              <Lock className="h-5 w-5 shrink-0" />
             </div>
             <div>
-              <h3 className="font-display text-sm sm:text-base font-extrabold text-foreground">
-                60-Day Free Trial Concluded — You're on Free Tier
+              <h3 className="text-sm sm:text-base font-extrabold text-foreground">
+                60-Day Free Trial Concluded — Free Tier Active
               </h3>
-              <p className="text-xs text-muted-foreground">
-                Workouts and tracking remain free forever. Unlock NutriGuide AI Coach and verified recipes for R49.00/month.
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Workouts and tracking remain free forever. Unlock NutriGuide AI Voice Coach for R49.00/month.
               </p>
             </div>
           </div>
@@ -255,9 +254,11 @@ function HomePage() {
           <Link
             to="/app/profile"
             search={{ subscribe: "true" }}
-            className="cursor-pointer inline-flex items-center gap-1.5 rounded-2xl bg-amber-500 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-amber-600 transition shrink-0"
+            className="cursor-pointer inline-flex items-center gap-1.5 rounded-2xl bg-amber-500 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-amber-600 transition shrink-0 active:scale-95"
           >
-            <Sparkles className="h-4 w-4" /> Unlock Premium (R49/mo) <ArrowRight className="h-3.5 w-3.5" />
+            <Sparkles className="h-4 w-4 shrink-0" />
+            <span>Unlock Premium (R49/mo)</span>
+            <ArrowRight className="h-3.5 w-3.5 shrink-0" />
           </Link>
         </div>
       )}
@@ -266,57 +267,57 @@ function HomePage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{greeting()},</p>
-          <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground mt-0.5">
-            {displayName} <span className="inline-block animate-bounce">👋</span>
+          <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight text-foreground mt-0.5">
+            {displayName} <span className="inline-block">👋</span>
           </h1>
         </div>
 
         <div className="flex items-center gap-2">
           {/* MEMBERSHIP STATUS PILL */}
           {isPremium ? (
-            <div className="flex items-center gap-1.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-3.5 py-2 text-xs font-extrabold text-emerald-600 dark:text-emerald-400">
-              <ShieldCheck className="h-4 w-4" />
+            <div className="flex items-center gap-1.5 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-2 text-xs font-extrabold text-emerald-600 dark:text-emerald-400 shrink-0">
+              <ShieldCheck className="h-4 w-4 shrink-0" />
               <span>Premium</span>
             </div>
           ) : isTrialActive ? (
-            <div className="flex items-center gap-1.5 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-3.5 py-2 text-xs font-extrabold text-amber-600 dark:text-amber-400">
-              <Clock className="h-4 w-4" />
+            <div className="flex items-center gap-1.5 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2 text-xs font-extrabold text-amber-600 dark:text-amber-400 shrink-0">
+              <Clock className="h-4 w-4 shrink-0" />
               <span>Free Tier ({daysLeft}d left)</span>
             </div>
           ) : (
             <Link
               to="/app/profile"
               search={{ subscribe: "true" }}
-              className="flex items-center gap-1.5 rounded-2xl border border-slate-500/20 bg-slate-500/10 px-3.5 py-2 text-xs font-extrabold text-muted-foreground hover:border-amber-500/30 hover:text-amber-500 transition cursor-pointer"
+              className="flex items-center gap-1.5 rounded-2xl border border-border bg-muted/60 px-3.5 py-2 text-xs font-extrabold text-muted-foreground hover:border-amber-500/30 hover:text-amber-500 transition cursor-pointer shrink-0"
             >
-              <Lock className="h-3.5 w-3.5" />
+              <Lock className="h-3.5 w-3.5 shrink-0" />
               <span>Free Tier</span>
             </Link>
           )}
 
           {/* STREAK BADGE */}
-          <div className="flex items-center gap-2 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-2 text-xs font-extrabold text-orange-600 dark:text-orange-400 shadow-sm">
-            <FireIcon className="h-4 w-4 fill-orange-500 text-orange-500" />
+          <div className="flex items-center gap-1.5 rounded-2xl border border-orange-500/30 bg-orange-500/10 px-3.5 py-2 text-xs font-extrabold text-orange-600 dark:text-orange-400 shadow-sm shrink-0">
+            <FireIcon className="h-4 w-4 shrink-0 fill-orange-500 text-orange-500" />
             <span>{profile?.streak_count ?? 0} Day Streak</span>
           </div>
         </div>
       </div>
 
-      {/* REAL-TIME CALORIE & MACRO PROGRESS DASHBOARD (FREE FOREVER) */}
-      <section className="rounded-3xl border border-border bg-card p-6 sm:p-8 shadow-sm space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-5">
+      {/* REAL-TIME CALORIE & MACRO PROGRESS DASHBOARD */}
+      <section className="rounded-3xl border border-border bg-card p-5 sm:p-8 shadow-sm space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 pb-5">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary border border-primary/20 shadow-inner">
-              <Zap className="h-6 w-6" />
+            <div className="flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 shrink-0">
+              <Zap className="h-5 w-5 sm:h-6 sm:w-6 shrink-0" />
             </div>
             <div>
-              <h2 className="font-display text-xl font-extrabold text-foreground">Daily Energy &amp; Macros</h2>
-              <p className="text-xs text-muted-foreground">Real-time target tracking and macro breakdown</p>
+              <h2 className="text-lg sm:text-xl font-extrabold text-foreground">Daily Energy &amp; Macros</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Real-time target tracking and macro breakdown</p>
             </div>
           </div>
 
           <div
-            className={`flex items-center gap-2 rounded-2xl px-4 py-2 text-xs font-extrabold border shadow-sm ${
+            className={`flex items-center gap-1.5 rounded-2xl px-3.5 py-1.5 text-xs font-extrabold border shadow-xs shrink-0 ${
               isCalExceeded
                 ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20"
                 : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
@@ -324,12 +325,12 @@ function HomePage() {
           >
             {isCalExceeded ? (
               <>
-                <AlertCircle className="h-4 w-4" />
+                <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>{Math.abs(calRemaining)} kcal exceeded</span>
               </>
             ) : (
               <>
-                <CheckCircle2 className="h-4 w-4" />
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
                 <span>{calRemaining} kcal remaining</span>
               </>
             )}
@@ -340,70 +341,75 @@ function HomePage() {
         <div className="space-y-2">
           <div className="flex items-center justify-between text-xs font-bold">
             <span className="flex items-center gap-1.5 text-foreground">
-              <Flame className="h-4 w-4 text-orange-500" /> Daily Calories ({todayCalories} / {calGoal} kcal)
+              <Flame className="h-4 w-4 shrink-0 text-orange-500" />
+              <span>Daily Calories ({todayCalories} / {calGoal} kcal)</span>
             </span>
             <span className="font-mono text-muted-foreground">
-              {Math.round((todayCalories / calGoal) * 100)}%
+              {Math.round((todayCalories / Math.max(calGoal, 1)) * 100)}%
             </span>
           </div>
 
-          <div className="h-3.5 w-full rounded-full bg-muted overflow-hidden p-0.5 border border-border">
+          <div className="h-3.5 w-full rounded-full bg-muted/80 overflow-hidden p-0.5 border border-border/80">
             <div
               className={`h-full rounded-full transition-all duration-700 ${
                 isCalExceeded ? "bg-rose-500" : "bg-gradient-to-r from-amber-500 to-orange-500"
               }`}
-              style={{ width: `${Math.min(100, (todayCalories / calGoal) * 100)}%` }}
+              style={{ width: `${Math.min(100, (todayCalories / Math.max(calGoal, 1)) * 100)}%` }}
             />
           </div>
         </div>
 
-        {/* 4-COLUMN MACRO BREAKDOWN BARS */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+        {/* 4-COLUMN BREAKDOWN BARS WITH 5,000 STEP GOAL REPLACING FAT CARD */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 pt-1">
+          {/* 1. STEPS (GOAL 5,000) */}
+          <MacroBar
+            label="Steps (Goal 5k)"
+            current={`${todaySteps.toLocaleString()}`}
+            target={`${stepsGoal.toLocaleString()}`}
+            progress={todaySteps / stepsGoal}
+            barColor="bg-emerald-500"
+            badgeColor="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+          />
+
+          {/* 2. PROTEIN */}
           <MacroBar
             label="Protein"
             current={`${todayProtein}g`}
             target={`${proteinGoal}g`}
-            progress={todayProtein / proteinGoal}
-            barColor="bg-emerald-500"
-            badgeColor="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+            progress={todayProtein / Math.max(proteinGoal, 1)}
+            barColor="bg-sky-500"
+            badgeColor="bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20"
           />
 
+          {/* 3. CARBS */}
           <MacroBar
             label="Carbs"
             current={`${todayCarbs}g`}
             target={`${carbsGoal}g`}
-            progress={todayCarbs / carbsGoal}
-            barColor="bg-sky-500"
-            badgeColor="bg-sky-500/10 text-sky-600 dark:text-sky-400"
+            progress={todayCarbs / Math.max(carbsGoal, 1)}
+            barColor="bg-amber-500"
+            badgeColor="bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
           />
 
+          {/* 4. FAT */}
           <MacroBar
             label="Fats"
             current={`${todayFat}g`}
             target={`${fatGoal}g`}
-            progress={todayFat / fatGoal}
-            barColor="bg-amber-500"
-            badgeColor="bg-amber-500/10 text-amber-600 dark:text-amber-400"
-          />
-
-          <MacroBar
-            label="Water"
-            current={`${waterL.toFixed(1)}L`}
-            target={`${waterGoal}L`}
-            progress={waterL / waterGoal}
-            barColor="bg-blue-500"
-            badgeColor="bg-blue-500/10 text-blue-600 dark:text-blue-400"
+            progress={todayFat / Math.max(fatGoal, 1)}
+            barColor="bg-rose-500"
+            badgeColor="bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
           />
         </div>
       </section>
 
-      {/* QUICK ACTIONS GRID */}
+      {/* QUICK ACTIONS GRID: RUNNING TRACKER REPLACES START WORKOUT */}
       <div className="grid grid-cols-2 gap-3.5 md:grid-cols-4">
-        {/* FREE FOREVER: START WORKOUT */}
+        {/* FREE FOREVER: OUTDOOR RUNNING */}
         <QuickAction
-          to="/app/workouts"
-          icon={Play}
-          label="Start Workout"
+          to="/app/running"
+          icon={Footprints}
+          label="Track Running"
           colorClass="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
         />
 
@@ -439,16 +445,18 @@ function HomePage() {
       </div>
 
       {/* WEIGHT PROGRESS SECTION */}
-      <section className="rounded-3xl border border-border bg-card p-6 shadow-sm transition hover:shadow-md">
+      <section className="rounded-3xl border border-border bg-card p-6 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-              <Target className="h-4 w-4 text-emerald-500" /> Weight Progress
+              <Target className="h-4 w-4 shrink-0 text-emerald-500" />
+              <span>Weight Progress</span>
             </p>
-            <p className="mt-1 font-display text-3xl font-extrabold text-foreground sm:text-4xl">
+            <p className="mt-1 text-3xl sm:text-4xl font-extrabold text-foreground">
               {profile?.current_weight_kg ? `${profile.current_weight_kg} kg` : "— kg"}
             </p>
           </div>
+
           <div className="text-right text-xs sm:text-sm space-y-1">
             <p className="text-muted-foreground">
               Start: <span className="font-bold text-foreground">{profile?.starting_weight_kg ?? "—"} kg</span>
@@ -469,18 +477,18 @@ function HomePage() {
 
       {/* MOTIVATION & TIP SECTION */}
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-3xl bg-primary p-6 text-primary-foreground shadow-md transition hover:scale-[1.01]">
-          <p className="text-xs font-bold uppercase tracking-widest text-primary-foreground/80">Daily motivation</p>
-          <p className="mt-2 font-display text-xl font-extrabold leading-snug">
-            "{quote?.text ?? "Your health is your best partner."}"
+        <div className="rounded-3xl bg-emerald-600 p-6 text-white shadow-md">
+          <p className="text-xs font-bold uppercase tracking-widest text-white/80">Daily Motivation</p>
+          <p className="mt-2 text-lg sm:text-xl font-extrabold leading-snug">
+            "{quote?.text ?? "Consistency is what transforms average into excellence."}"
           </p>
-          <p className="mt-3 text-xs font-semibold text-primary-foreground/80">— {quote?.author ?? "NutriFit"}</p>
+          <p className="mt-3 text-xs font-semibold text-white/80">— {quote?.author ?? "NutriFit"}</p>
         </div>
 
-        <div className="rounded-3xl border border-border bg-card p-6 shadow-sm transition hover:shadow-md">
-          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Tip of the day</p>
+        <div className="rounded-3xl border border-border bg-card p-6 shadow-sm">
+          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Tip of the Day</p>
           <p className="mt-2 text-sm sm:text-base font-semibold text-foreground leading-relaxed">
-            {tip ?? "Stay hydrated and keep moving throughout your day."}
+            {tip ?? "Prioritize whole foods with balanced protein to maintain consistent energy throughout the day."}
           </p>
         </div>
       </div>
@@ -488,7 +496,6 @@ function HomePage() {
   );
 }
 
-// MACRO PROGRESS COMPONENT
 function MacroBar({
   label,
   current,
@@ -507,7 +514,7 @@ function MacroBar({
   const pct = Math.min(100, Math.round((progress || 0) * 100));
 
   return (
-    <div className="rounded-2xl border border-border bg-background p-4 shadow-xs space-y-2">
+    <div className="rounded-2xl border border-border bg-muted/30 p-4 shadow-xs space-y-2">
       <div className="flex items-center justify-between">
         <span className={`rounded-lg px-2 py-0.5 text-[10px] font-extrabold uppercase ${badgeColor}`}>
           {label}
@@ -530,7 +537,6 @@ function MacroBar({
   );
 }
 
-// QUICK ACTION BUTTON COMPONENT
 function QuickAction({
   to,
   search,
@@ -550,15 +556,15 @@ function QuickAction({
     <Link
       to={to}
       search={search}
-      className="group relative flex flex-col items-start gap-3 rounded-3xl border border-border bg-card p-4 transition-all duration-200 hover:scale-[1.02] hover:shadow-md active:scale-[0.98] cursor-pointer"
+      className="group relative flex flex-col items-start gap-3 rounded-3xl border border-border bg-card p-4 transition-all duration-200 hover:shadow-md active:scale-95 cursor-pointer"
     >
       {isLocked && (
         <span className="absolute right-3 top-3 rounded-md bg-amber-500/20 px-2 py-0.5 text-[9px] font-extrabold uppercase text-amber-600 dark:text-amber-400 border border-amber-500/30">
           PRO
         </span>
       )}
-      <div className={`grid h-10 w-10 place-items-center rounded-2xl border ${colorClass} transition-transform group-hover:scale-110 shadow-xs`}>
-        <Icon className="h-5 w-5" />
+      <div className={`grid h-10 w-10 place-items-center rounded-2xl border ${colorClass} transition-transform group-hover:scale-105 shrink-0`}>
+        <Icon className="h-5 w-5 shrink-0" />
       </div>
       <span className="text-xs sm:text-sm font-extrabold text-foreground">{label}</span>
     </Link>

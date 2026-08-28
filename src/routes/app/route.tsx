@@ -37,7 +37,7 @@ function AppLayout() {
   if (loading || !user) {
     return (
       <div className="grid min-h-screen place-items-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
       </div>
     );
   }
@@ -52,7 +52,7 @@ function AppLayout() {
 
   return (
     <AppShell>
-      {/* Container with ample bottom clearance (pb-28) so the elevated mobile bottom navigation never obscures page content */}
+      {/* Container with clearance for mobile bottom navigation */}
       <div className="w-full max-w-7xl mx-auto pb-28 md:pb-8 px-3 sm:px-6">
         <Outlet />
       </div>

@@ -49,16 +49,16 @@ function WorkoutsPage() {
   );
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto font-sans pb-10">
+    <div className="space-y-6 max-w-7xl mx-auto font-sans pb-12 w-full">
       {/* HEADER WITH LIFETIME FREE BADGE */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-border/60">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="font-display text-2xl sm:text-3xl font-extrabold text-foreground tracking-tight">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-foreground tracking-tight">
               Workouts
             </h1>
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400">
-              <CheckCircle2 className="h-3 w-3" /> Free Feature
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 shrink-0">
+              <CheckCircle2 className="h-3 w-3 shrink-0" /> Free Feature
             </span>
           </div>
           <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
@@ -94,21 +94,21 @@ function WorkoutsPage() {
           >
             <div>
               <div className="relative h-36 bg-gradient-to-r from-emerald-500/20 to-orange-500/20 p-4 flex items-start justify-between">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-card/80 backdrop-blur-md border border-border text-primary shadow-xs">
-                  <Dumbbell className="h-5 w-5" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-card/80 backdrop-blur-md border border-border text-emerald-500 shadow-xs shrink-0">
+                  <Dumbbell className="h-5 w-5 shrink-0" />
                 </div>
-                <span className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                <span className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 shrink-0">
                   {w.difficulty}
                 </span>
               </div>
 
               <div className="p-5 space-y-2">
                 <div className="flex items-center gap-1.5 text-[11px] font-bold text-rose-500">
-                  <Youtube className="h-3.5 w-3.5 fill-current" />
+                  <Youtube className="h-3.5 w-3.5 fill-current shrink-0" />
                   <span>{w.channel_name || "YouTube Creator"}</span>
                 </div>
 
-                <h3 className="font-display text-base font-extrabold text-foreground group-hover:text-primary transition line-clamp-2">
+                <h3 className="text-base font-extrabold text-foreground group-hover:text-emerald-500 transition line-clamp-2">
                   {w.title}
                 </h3>
                 <p className="line-clamp-2 text-xs text-muted-foreground leading-relaxed">
@@ -118,12 +118,12 @@ function WorkoutsPage() {
             </div>
 
             <div className="p-5 pt-0">
-              <div className="flex items-center justify-between text-xs text-muted-foreground border-t border-border pt-3">
-                <span className="flex items-center gap-1 font-medium">
-                  <Clock className="h-3.5 w-3.5 text-primary" /> {w.duration_minutes} min
+              <div className="flex items-center justify-between text-xs text-muted-foreground border-t border-border/60 pt-3">
+                <span className="flex items-center gap-1 font-bold">
+                  <Clock className="h-3.5 w-3.5 text-emerald-500 shrink-0" /> {w.duration_minutes} min
                 </span>
-                <span className="flex items-center gap-1 font-medium">
-                  <Flame className="h-3.5 w-3.5 text-orange-500" /> {w.estimated_calories} cal
+                <span className="flex items-center gap-1 font-bold text-orange-500">
+                  <Flame className="h-3.5 w-3.5 text-orange-500 shrink-0" /> {w.estimated_calories} cal
                 </span>
                 <span className="capitalize font-bold text-foreground text-[11px]">{w.equipment}</span>
               </div>
@@ -164,7 +164,7 @@ function FilterGroup({
           onClick={() => onChange(o)}
           className={`cursor-pointer rounded-full px-3 py-1 text-xs font-bold capitalize transition ${
             value === o
-              ? "bg-primary text-primary-foreground shadow-xs"
+              ? "bg-emerald-500 text-white shadow-xs"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >

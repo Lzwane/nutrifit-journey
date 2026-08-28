@@ -5,19 +5,14 @@ import {
   Flame,
   ChefHat,
   Search,
-  Utensils,
-  Sparkles,
-  X,
   Plus,
   Loader2,
   Star,
   Camera,
-  CheckCircle2,
-  Users,
   Lock,
   Check,
   ArrowRight,
-  ShieldCheck,
+  X,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
@@ -242,29 +237,27 @@ export function RecipesPage() {
     }
   };
 
-  // 1. Loading State while checking subscription
   if (subscriptionLoading) {
     return (
       <div className="flex h-64 items-center justify-center text-xs text-muted-foreground font-sans">
-        <Loader2 className="h-5 w-5 animate-spin text-primary mr-2" /> Checking access...
+        <Loader2 className="h-5 w-5 animate-spin text-emerald-500 mr-2 shrink-0" /> Checking access...
       </div>
     );
   }
 
-  // 2. Paywall Guard: Block features on Free Tier (when trial has expired and user is not on Premium)
   if (!hasAccess) {
     return (
       <div className="flex-1 flex items-center justify-center p-4 font-sans min-h-[70vh]">
         <div className="max-w-md w-full text-center space-y-6 rounded-3xl border border-border bg-card p-6 sm:p-8 shadow-xl animate-in fade-in">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-amber-500/10 border border-amber-500/20 text-amber-500 shadow-inner">
-            <Lock className="h-8 w-8" />
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-amber-500/10 border border-amber-500/20 text-amber-500 shrink-0 shadow-inner">
+            <Lock className="h-8 w-8 shrink-0" />
           </div>
 
           <div className="space-y-2">
-            <span className="rounded-full bg-amber-500/10 border border-amber-500/20 px-3 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-500">
+            <span className="rounded-full bg-amber-500/10 border border-amber-500/20 px-3 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-500 inline-block">
               Premium Feature
             </span>
-            <h2 className="font-display text-2xl font-extrabold text-foreground">
+            <h2 className="text-2xl font-extrabold text-foreground">
               Nutritionist Recipes &amp; Meal Plans
             </h2>
             <p className="text-xs text-muted-foreground leading-relaxed">
@@ -292,16 +285,15 @@ export function RecipesPage() {
             search={{ subscribe: "true" }}
             className="w-full flex items-center justify-center gap-2 rounded-2xl bg-amber-500 hover:bg-amber-600 active:scale-95 py-3.5 text-xs font-bold text-white shadow-md transition uppercase tracking-wider cursor-pointer"
           >
-            <Sparkles className="h-4 w-4" />
+            <Lock className="h-4 w-4 shrink-0" />
             <span>Unlock Premium (R49.00 / mo)</span>
-            <ArrowRight className="h-3.5 w-3.5" />
+            <ArrowRight className="h-3.5 w-3.5 shrink-0" />
           </Link>
         </div>
       </div>
     );
   }
 
-  // Combine Official & Approved Community Recipes
   const allRecipes = [
     ...officialRecipes.map((r) => ({ ...r, isOfficial: true })),
     ...approvedCommunityRecipes.map((r) => ({ ...r, isCommunity: true })),
@@ -320,11 +312,11 @@ export function RecipesPage() {
   });
 
   return (
-    <div className="space-y-6 font-sans">
+    <div className="space-y-6 max-w-7xl mx-auto font-sans pb-12 w-full">
       {/* HEADER BAR */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-3xl border border-primary/20 bg-primary/5 p-6 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-3xl border border-emerald-500/20 bg-emerald-500/5 p-6 shadow-sm">
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
             Recipes &amp; Nutrition Catalog
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">
@@ -335,21 +327,21 @@ export function RecipesPage() {
         <button
           type="button"
           onClick={() => setIsSubmitModalOpen(true)}
-          className="cursor-pointer inline-flex items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3 text-xs sm:text-sm font-bold text-primary-foreground shadow-md transition hover:bg-primary/90 active:scale-[0.98] shrink-0"
+          className="cursor-pointer inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-xs sm:text-sm font-bold text-white shadow-md transition hover:bg-emerald-600 active:scale-95 shrink-0"
         >
-          <Plus className="h-4 w-4" /> Submit Recipe for Review
+          <Plus className="h-4 w-4 shrink-0" /> Submit Recipe for Review
         </button>
       </div>
 
       {/* SEARCH & CATEGORY FILTERS */}
       <div className="space-y-3">
         <div className="relative max-w-md">
-          <Search className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground shrink-0" />
           <input
             placeholder="Search recipes, ingredients, or meals..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full rounded-xl border border-input bg-card pl-10 pr-4 py-2.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
+            className="w-full rounded-2xl border border-input bg-card pl-10 pr-4 py-2.5 text-xs sm:text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-xs"
           />
         </div>
 
@@ -359,9 +351,9 @@ export function RecipesPage() {
               key={cat}
               type="button"
               onClick={() => setSelectedCategory(cat)}
-              className={`cursor-pointer rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
+              className={`cursor-pointer rounded-xl px-3.5 py-1.5 text-xs font-extrabold transition-all duration-200 ${
                 selectedCategory === cat
-                  ? "bg-primary text-primary-foreground shadow-sm"
+                  ? "bg-emerald-500 text-white shadow-xs"
                   : "border border-border bg-card text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -373,12 +365,12 @@ export function RecipesPage() {
 
       {/* RECIPES CATALOG GRID */}
       {loadingRecipes ? (
-        <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-          <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" /> Loading recipes...
+        <div className="flex h-48 items-center justify-center text-xs sm:text-sm text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin text-emerald-500 mr-2 shrink-0" /> Loading recipes...
         </div>
       ) : filteredRecipes.length === 0 ? (
         <div className="rounded-3xl border border-border bg-card p-12 text-center text-xs text-muted-foreground space-y-2">
-          <ChefHat className="h-10 w-10 mx-auto opacity-50 text-primary" />
+          <ChefHat className="h-10 w-10 mx-auto opacity-50 text-emerald-500 shrink-0" />
           <p className="font-bold text-sm text-foreground">No recipes found</p>
           <p>Try adjusting your search query or category filters.</p>
         </div>
@@ -390,19 +382,19 @@ export function RecipesPage() {
             return (
               <div
                 key={r.id}
-                className="group overflow-hidden rounded-2xl border border-border bg-card transition-all duration-200 hover:shadow-md flex flex-col justify-between"
+                className="group overflow-hidden rounded-3xl border border-border bg-card transition-all duration-200 hover:shadow-md flex flex-col justify-between"
               >
                 {/* IMAGE / HEADER */}
-                <div className="relative h-44 bg-muted overflow-hidden">
+                <div className="relative h-44 bg-muted overflow-hidden shrink-0">
                   {r.image_url ? (
                     <img src={r.image_url} alt={r.title} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-primary/10">
-                      <ChefHat className="h-12 w-12 text-primary/80" />
+                    <div className="w-full h-full flex items-center justify-center bg-emerald-500/10">
+                      <ChefHat className="h-12 w-12 text-emerald-500/80 shrink-0" />
                     </div>
                   )}
 
-                  <span className={`absolute top-3 left-3 rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider shadow-sm ${
+                  <span className={`absolute top-3 left-3 rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider shadow-xs ${
                     r.isOfficial ? "bg-emerald-500 text-white" : "bg-amber-500 text-white"
                   }`}>
                     {r.isOfficial ? "Verified Official" : `By ${r.author}`}
@@ -410,9 +402,9 @@ export function RecipesPage() {
                 </div>
 
                 {/* DETAILS */}
-                <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                <div className="p-5 flex-1 flex flex-col justify-between space-y-3">
                   <div>
-                    <h3 className="font-display text-base font-bold text-foreground line-clamp-1">
+                    <h3 className="text-base font-extrabold text-foreground line-clamp-1 group-hover:text-emerald-500 transition">
                       {r.title}
                     </h3>
                     <p className="mt-1 line-clamp-2 text-xs text-muted-foreground leading-relaxed">
@@ -421,43 +413,51 @@ export function RecipesPage() {
                   </div>
 
                   {/* STAR RATINGS */}
-                  <div className="flex items-center justify-between border-t border-border pt-2.5">
+                  <div className="flex items-center justify-between border-t border-border/60 pt-2.5">
                     <div className="flex items-center gap-1">
                       {[1, 2, 3, 4, 5].map((star) => (
                         <button
                           key={star}
                           type="button"
                           onClick={() => handleRateRecipe(r.id, star)}
-                          className="cursor-pointer text-amber-400 hover:scale-125 transition"
+                          className="cursor-pointer text-amber-400 hover:scale-125 transition shrink-0"
                         >
                           <Star
-                            className={`h-4 w-4 ${
+                            className={`h-4 w-4 shrink-0 ${
                               star <= (ratingData.userRating || Math.round(ratingData.avg))
                                 ? "fill-amber-400 text-amber-400"
-                                : "text-muted-foreground/40"
+                                : "text-muted-foreground/30"
                             }`}
                           />
                         </button>
                       ))}
-                      <span className="text-[11px] font-bold text-muted-foreground ml-1">
+                      <span className="text-[11px] font-bold text-muted-foreground ml-1 font-mono">
                         {ratingData.avg > 0 ? `${ratingData.avg} (${ratingData.count})` : "New"}
                       </span>
                     </div>
 
                     <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                      {r.protein}
+                      {r.protein || (r.protein_g ? `${r.protein_g}g Protein` : "")}
                     </span>
                   </div>
 
                   {/* MACRO FOOTER */}
                   <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground pt-1">
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-3.5 w-3.5 text-primary" /> {r.prep_time || "15 mins"}
+                    <span className="flex items-center gap-1 font-medium">
+                      <Clock className="h-3.5 w-3.5 text-emerald-500 shrink-0" /> {r.prep_time || `${r.prep_minutes || 15}m`}
                     </span>
-                    <span className="flex items-center gap-1">
-                      <Flame className="h-3.5 w-3.5 text-orange-500" /> {r.calories} kcal
+                    <span className="flex items-center gap-1 font-bold text-orange-500">
+                      <Flame className="h-3.5 w-3.5 text-orange-500 shrink-0" /> {r.calories || r.calories_per_serving} kcal
                     </span>
                   </div>
+
+                  <Link
+                    to="/app/recipes/$id"
+                    params={{ id: r.id }}
+                    className="w-full text-center rounded-xl bg-muted/60 hover:bg-emerald-500 hover:text-white py-2 text-xs font-extrabold transition text-foreground"
+                  >
+                    View Ingredients &amp; Prep
+                  </Link>
                 </div>
               </div>
             );
@@ -469,28 +469,28 @@ export function RecipesPage() {
       {isSubmitModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs overflow-y-auto">
           <div className="w-full max-w-xl rounded-3xl border border-border bg-card p-6 shadow-2xl space-y-4 my-8 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-border pb-3">
+            <div className="flex items-center justify-between border-b border-border/60 pb-3">
               <div className="flex items-center gap-2">
-                <ChefHat className="h-5 w-5 text-primary" />
-                <h3 className="font-display text-lg font-bold text-foreground">Submit Recipe for Approval</h3>
+                <ChefHat className="h-5 w-5 text-emerald-500 shrink-0" />
+                <h3 className="text-lg font-extrabold text-foreground">Submit Recipe for Approval</h3>
               </div>
               <button
                 type="button"
                 onClick={() => setIsSubmitModalOpen(false)}
-                className="cursor-pointer rounded-lg p-1 text-muted-foreground hover:bg-muted"
+                className="cursor-pointer rounded-lg p-1 text-muted-foreground hover:bg-muted shrink-0"
               >
-                <X className="h-5 w-5" />
+                <X className="h-5 w-5 shrink-0" />
               </button>
             </div>
 
             {submitSuccess && (
-              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
                 {submitSuccess}
               </div>
             )}
 
             {submitError && (
-              <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-xs font-semibold text-destructive">
+              <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-3 text-xs font-semibold text-rose-600 dark:text-rose-400">
                 {submitError}
               </div>
             )}
@@ -509,13 +509,13 @@ export function RecipesPage() {
                 />
                 <div
                   onClick={() => fileInputRef.current?.click()}
-                  className="cursor-pointer border-2 border-dashed border-border rounded-2xl p-4 text-center hover:border-primary transition bg-muted/20"
+                  className="cursor-pointer border-2 border-dashed border-border rounded-2xl p-4 text-center hover:border-emerald-500 transition bg-muted/20"
                 >
                   {imagePreview ? (
                     <img src={imagePreview} alt="Preview" className="h-32 w-full object-cover rounded-xl mx-auto" />
                   ) : (
                     <div className="space-y-1 text-muted-foreground">
-                      <Camera className="h-8 w-8 mx-auto text-primary" />
+                      <Camera className="h-8 w-8 mx-auto text-emerald-500 shrink-0" />
                       <p className="text-xs font-semibold">Click to upload a clear photo of your dish</p>
                     </div>
                   )}
@@ -530,7 +530,7 @@ export function RecipesPage() {
                   placeholder="e.g. Protein Banana Pancakes"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
 
@@ -542,7 +542,7 @@ export function RecipesPage() {
                   placeholder="e.g. Delicious fluffy 3-ingredient morning meal."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
 
@@ -594,7 +594,7 @@ export function RecipesPage() {
                     placeholder={`2 Eggs\n1 Banana\n1 scoop Protein`}
                     value={ingredients}
                     onChange={(e) => setIngredients(e.target.value)}
-                    className="w-full rounded-xl border border-input bg-background p-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="w-full rounded-xl border border-input bg-background p-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
                 <div>
@@ -605,7 +605,7 @@ export function RecipesPage() {
                     placeholder={`1. Mash banana.\n2. Mix with eggs.\n3. Fry in skillet.`}
                     value={instructions}
                     onChange={(e) => setInstructions(e.target.value)}
-                    className="w-full rounded-xl border border-input bg-background p-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="w-full rounded-xl border border-input bg-background p-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
               </div>
@@ -613,7 +613,7 @@ export function RecipesPage() {
               <button
                 type="submit"
                 disabled={submitLoading}
-                className="w-full cursor-pointer rounded-2xl bg-primary py-3 text-xs font-bold text-primary-foreground shadow-md transition hover:bg-primary/90 disabled:opacity-50 mt-2"
+                className="w-full cursor-pointer rounded-2xl bg-emerald-500 py-3 text-xs font-bold text-white shadow-md transition hover:bg-emerald-600 disabled:opacity-50 mt-2"
               >
                 {submitLoading ? "Submitting Recipe..." : "Submit to Admin for Review"}
               </button>

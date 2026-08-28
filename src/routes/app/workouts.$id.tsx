@@ -319,14 +319,14 @@ function WorkoutDetailPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto font-sans pb-12">
+    <div className="space-y-6 max-w-4xl mx-auto font-sans pb-12 w-full">
       <div className="flex items-center justify-between">
         <Link
           to="/app/workouts"
           onClick={() => localStorage.removeItem("nutrifit_active_workout_id")}
           className="inline-flex items-center gap-1.5 text-xs font-bold text-muted-foreground hover:text-foreground transition cursor-pointer"
         >
-          <ArrowLeft className="h-4 w-4" /> Back to All Workouts
+          <ArrowLeft className="h-4 w-4 shrink-0" /> Back to All Workouts
         </Link>
 
         {currentTime > 5 && (
@@ -335,7 +335,7 @@ function WorkoutDetailPage() {
             onClick={handleResetWorkout}
             className="flex items-center gap-1 text-xs font-bold text-muted-foreground hover:text-rose-500 transition cursor-pointer"
           >
-            <RotateCcw className="h-3.5 w-3.5" /> Restart Routine
+            <RotateCcw className="h-3.5 w-3.5 shrink-0" /> Restart Routine
           </button>
         )}
       </div>
@@ -350,33 +350,33 @@ function WorkoutDetailPage() {
       {/* WORKOUT INFO */}
       <div className="rounded-3xl border border-border bg-card p-6 shadow-xs space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+          <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0">
             {workout.difficulty} • {workout.category.replace("_", " ")}
           </span>
 
           <div className="flex items-center gap-4 text-xs font-bold text-muted-foreground">
             <span className="flex items-center gap-1">
-              <Clock className="h-4 w-4 text-primary" /> {workout.duration_minutes} mins
+              <Clock className="h-4 w-4 text-emerald-500 shrink-0" /> {workout.duration_minutes} mins
             </span>
-            <span className="flex items-center gap-1">
-              <Flame className="h-4 w-4 text-orange-500" /> {workout.estimated_calories} cal
+            <span className="flex items-center gap-1 font-bold text-orange-500">
+              <Flame className="h-4 w-4 text-orange-500 shrink-0" /> {workout.estimated_calories} cal
             </span>
           </div>
         </div>
 
         <div>
-          <h1 className="font-display text-xl sm:text-2xl font-extrabold text-foreground">{workout.title}</h1>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-foreground">{workout.title}</h1>
           <p className="mt-1 text-xs sm:text-sm text-muted-foreground leading-relaxed">{workout.description}</p>
         </div>
       </div>
 
       {/* AUTOMATIC LIVE SEGMENTS CHECKLIST */}
       <div className="rounded-3xl border border-border bg-card p-6 shadow-xs space-y-4">
-        <div className="flex items-center justify-between border-b border-border pb-3">
-          <h3 className="font-display text-base font-extrabold text-foreground flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-primary" /> Workout Segments
+        <div className="flex items-center justify-between border-b border-border/60 pb-3">
+          <h3 className="text-base font-extrabold text-foreground flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-emerald-500 shrink-0" /> Workout Segments
           </h3>
-          <span className="text-xs font-bold text-muted-foreground">
+          <span className="text-xs font-bold text-muted-foreground font-mono">
             {completedSegmentIds.length} / {segments.length} Completed
           </span>
         </div>
@@ -394,9 +394,9 @@ function WorkoutDetailPage() {
                 onClick={() => seekToSegment(seg)}
                 className={`cursor-pointer flex items-center justify-between p-3.5 rounded-2xl border transition ${
                   isCurrent
-                    ? "bg-primary/10 border-primary/40 shadow-xs"
+                    ? "bg-emerald-500/10 border-emerald-500/40 shadow-xs"
                     : isCompleted
-                    ? "bg-emerald-500/10 border-emerald-500/20 opacity-80"
+                    ? "bg-emerald-500/5 border-emerald-500/20 opacity-80"
                     : "bg-background border-border hover:bg-muted/40"
                 }`}
               >
@@ -406,11 +406,11 @@ function WorkoutDetailPage() {
                       isCompleted
                         ? "bg-emerald-500 text-white"
                         : isCurrent
-                        ? "bg-primary text-primary-foreground animate-pulse"
+                        ? "bg-emerald-500 text-white animate-pulse"
                         : "bg-muted text-muted-foreground"
                     }`}
                   >
-                    {isCompleted ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
+                    {isCompleted ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : index + 1}
                   </div>
 
                   <div>
@@ -419,7 +419,7 @@ function WorkoutDetailPage() {
                         isCompleted
                           ? "line-through text-muted-foreground"
                           : isCurrent
-                          ? "text-primary"
+                          ? "text-emerald-500"
                           : "text-foreground"
                       }`}
                     >
@@ -431,7 +431,7 @@ function WorkoutDetailPage() {
                   </div>
                 </div>
 
-                <span className="rounded-lg bg-muted px-2.5 py-1 text-[10px] font-bold text-muted-foreground">
+                <span className="rounded-lg bg-muted px-2.5 py-1 text-[10px] font-bold text-muted-foreground shrink-0">
                   {seg.duration}
                 </span>
               </div>

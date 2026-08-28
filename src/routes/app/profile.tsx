@@ -19,8 +19,6 @@ import {
   Clock,
   ShieldCheck,
   ShieldAlert,
-  Flame,
-  Scale,
   Loader2,
   LogOut,
 } from "lucide-react";
@@ -337,7 +335,7 @@ function ProfilePage() {
     await refresh();
   };
 
-  if (!profile) return <p className="p-6 text-muted-foreground">Loading profile...</p>;
+  if (!profile) return <p className="p-6 text-muted-foreground font-sans">Loading profile...</p>;
 
   const displayName = `${profile.first_name || ""} ${profile.last_name || ""}`.trim() || user?.email?.split("@")[0] || "User";
   const isPremium = profile.subscription_tier === "premium" && profile.subscription_status === "active";
@@ -345,36 +343,36 @@ function ProfilePage() {
   const trialProgress = Math.min(100, Math.max(0, Math.round(((60 - daysLeft) / 60) * 100)));
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto font-sans pb-12">
+    <div className="space-y-6 max-w-4xl mx-auto font-sans pb-12 w-full">
       
       {/* 1. TOP PROFILE HEADER */}
       <section className="rounded-3xl border border-border bg-card p-6 shadow-sm space-y-6">
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
-          <div className="relative">
-            <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary border-2 border-primary/20 shadow-inner">
-              <UserIcon className="h-10 w-10" />
+          <div className="relative shrink-0">
+            <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-2 border-emerald-500/20 shadow-inner">
+              <UserIcon className="h-10 w-10 shrink-0" />
             </div>
             {isPremium && (
-              <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-amber-500 text-white shadow-sm">
-                <Sparkles className="h-3.5 w-3.5" />
+              <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-amber-500 text-white shadow-sm shrink-0">
+                <Sparkles className="h-3.5 w-3.5 shrink-0" />
               </span>
             )}
           </div>
 
-          <div className="flex-1 text-center sm:text-left space-y-2 w-full">
+          <div className="flex-1 text-center sm:text-left space-y-2 w-full min-w-0">
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
-              <h1 className="font-display text-2xl font-extrabold text-foreground">{displayName}</h1>
+              <h1 className="text-2xl font-extrabold text-foreground">{displayName}</h1>
               {isPremium ? (
-                <span className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                  <ShieldCheck className="h-3 w-3" /> Premium Unlocked
+                <span className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1 shrink-0">
+                  <ShieldCheck className="h-3 w-3 shrink-0" /> Premium Unlocked
                 </span>
               ) : isTrialActive ? (
-                <span className="rounded-full bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                  <Clock className="h-3 w-3" /> 60-Day Trial Active
+                <span className="rounded-full bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1 shrink-0">
+                  <Clock className="h-3 w-3 shrink-0" /> 60-Day Trial Active
                 </span>
               ) : (
-                <span className="rounded-full bg-rose-500/10 border border-rose-500/20 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-1">
-                  <ShieldAlert className="h-3 w-3" /> Plan Due
+                <span className="rounded-full bg-rose-500/10 border border-rose-500/20 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-1 shrink-0">
+                  <ShieldAlert className="h-3 w-3 shrink-0" /> Plan Due
                 </span>
               )}
             </div>
@@ -390,16 +388,16 @@ function ProfilePage() {
                   placeholder={isEditingBio ? "Type your bio here..." : "No bio added yet."}
                   className={`w-full rounded-2xl border px-3.5 py-2 pr-9 text-xs transition min-h-[55px] resize-none outline-none ${
                     isEditingBio
-                      ? "border-primary bg-background text-foreground ring-2 ring-primary/20"
+                      ? "border-emerald-500 bg-background text-foreground ring-2 ring-emerald-500/20"
                       : "border-border/80 bg-background/50 text-muted-foreground cursor-default"
                   }`}
                 />
                 <button
                   type="button"
                   onClick={isEditingBio ? saveBio : handleEditBioClick}
-                  className="absolute right-2.5 top-2.5 flex h-6 w-6 cursor-pointer items-center justify-center rounded-lg bg-card border border-border text-muted-foreground hover:text-primary transition shadow-sm"
+                  className="absolute right-2.5 top-2.5 flex h-6 w-6 cursor-pointer items-center justify-center rounded-lg bg-card border border-border text-muted-foreground hover:text-emerald-500 transition shadow-xs shrink-0"
                 >
-                  {isEditingBio ? <Check className="h-3.5 w-3.5 text-primary" /> : <Edit3 className="h-3.5 w-3.5" />}
+                  {isEditingBio ? <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" /> : <Edit3 className="h-3.5 w-3.5 shrink-0" />}
                 </button>
               </div>
 
@@ -415,9 +413,9 @@ function ProfilePage() {
                   <button
                     type="button"
                     onClick={saveBio}
-                    className="cursor-pointer inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-1.5 text-[11px] font-bold text-primary-foreground shadow-sm hover:bg-primary/90"
+                    className="cursor-pointer inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3.5 py-1.5 text-[11px] font-bold text-white shadow-xs hover:bg-emerald-600"
                   >
-                    <Save className="h-3.5 w-3.5" /> Save Bio
+                    <Save className="h-3.5 w-3.5 shrink-0" /> Save Bio
                   </button>
                 </div>
               )}
@@ -429,10 +427,10 @@ function ProfilePage() {
         <div className="rounded-2xl border border-border bg-gradient-to-r from-emerald-500/10 via-card to-amber-500/10 p-5 space-y-3.5 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary">
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
                 Membership Cycle
               </span>
-              <h3 className="font-display text-base font-extrabold text-foreground">
+              <h3 className="text-base font-extrabold text-foreground">
                 {isPremium
                   ? `Active • Auto-renews on ${profile.next_billing_date ? new Date(profile.next_billing_date).toLocaleDateString() : "Next Month"}`
                   : isTrialActive
@@ -441,7 +439,7 @@ function ProfilePage() {
               </h3>
             </div>
             <div className="text-right">
-              <span className="text-2xl sm:text-3xl font-extrabold font-mono text-primary">
+              <span className="text-2xl sm:text-3xl font-extrabold font-mono text-emerald-600 dark:text-emerald-400">
                 {isPremium ? "Premium" : `${daysLeft}d`}
               </span>
             </div>
@@ -455,7 +453,7 @@ function ProfilePage() {
                   style={{ width: `${trialProgress}%` }}
                 />
               </div>
-              <div className="flex justify-between text-[10px] font-semibold text-muted-foreground">
+              <div className="flex justify-between text-[10px] font-semibold text-muted-foreground font-mono">
                 <span>Day {60 - daysLeft} of 60</span>
                 <span>{60 - trialProgress}% Trial Left</span>
               </div>
@@ -474,14 +472,14 @@ function ProfilePage() {
                 onClick={() => setShowUpgradeModal(true)}
                 className="inline-flex items-center gap-1 font-bold text-amber-600 dark:text-amber-400 hover:underline cursor-pointer shrink-0"
               >
-                <Sparkles className="h-3.5 w-3.5" /> Unlock R49 / Month
+                <Sparkles className="h-3.5 w-3.5 shrink-0" /> Unlock R49 / Month
               </button>
             )}
           </div>
         </div>
       </section>
 
-      {/* 4. ACCORDION FOLDERS */}
+      {/* 3. ACCORDION FOLDERS */}
       <div className="space-y-3">
         {/* Personal Info */}
         <div className="overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
@@ -491,15 +489,15 @@ function ProfilePage() {
             className="flex w-full items-center justify-between p-5 text-left font-bold text-foreground hover:bg-muted/50 transition cursor-pointer"
           >
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                <UserCheck className="h-5 w-5" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0">
+                <UserCheck className="h-5 w-5 shrink-0" />
               </div>
               <div>
                 <h3 className="text-sm font-bold">Personal Information</h3>
                 <p className="text-[11px] font-normal text-muted-foreground">Names, email &amp; mobile contact</p>
               </div>
             </div>
-            {openFolders.personal ? <ChevronDown className="h-5 w-5 text-muted-foreground" /> : <ChevronRight className="h-5 w-5 text-muted-foreground" />}
+            {openFolders.personal ? <ChevronDown className="h-5 w-5 text-muted-foreground shrink-0" /> : <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />}
           </button>
 
           {openFolders.personal && (
@@ -512,7 +510,7 @@ function ProfilePage() {
                       value={user?.email ?? ""}
                       className="input cursor-not-allowed bg-muted/50 pr-10 text-muted-foreground font-medium"
                     />
-                    <Lock className="absolute right-3.5 top-3 h-4 w-4 text-muted-foreground/60" />
+                    <Lock className="absolute right-3.5 top-3 h-4 w-4 text-muted-foreground/60 shrink-0" />
                   </div>
                 </Field>
 
@@ -560,7 +558,7 @@ function ProfilePage() {
                         if (val.length > 9) val = val.slice(0, 9);
                         setProfile({ ...profile, raw_phone: val });
                       }}
-                      className="w-full bg-transparent px-3 py-2.5 text-sm outline-none text-foreground font-medium"
+                      className="w-full bg-transparent px-3 py-2.5 text-xs sm:text-sm outline-none text-foreground font-medium"
                       placeholder="82 123 4567"
                     />
                   </div>
@@ -570,9 +568,9 @@ function ProfilePage() {
               <button
                 type="button"
                 onClick={savePersonal}
-                className="cursor-pointer inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
+                className="cursor-pointer inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-600 transition"
               >
-                <Save className="h-4 w-4" /> {savedFlash ? "Saved ✓" : "Save Changes"}
+                <Save className="h-4 w-4 shrink-0" /> {savedFlash ? "Saved ✓" : "Save Changes"}
               </button>
             </div>
           )}
@@ -586,15 +584,15 @@ function ProfilePage() {
             className="flex w-full items-center justify-between p-5 text-left font-bold text-foreground hover:bg-muted/50 transition cursor-pointer"
           >
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-500">
-                <Target className="h-5 w-5" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0">
+                <Target className="h-5 w-5 shrink-0" />
               </div>
               <div>
                 <h3 className="text-sm font-bold">Fitness Targets</h3>
                 <p className="text-[11px] font-normal text-muted-foreground">Height, current weight &amp; daily calorie target</p>
               </div>
             </div>
-            {openFolders.fitness ? <ChevronDown className="h-5 w-5 text-muted-foreground" /> : <ChevronRight className="h-5 w-5 text-muted-foreground" />}
+            {openFolders.fitness ? <ChevronDown className="h-5 w-5 text-muted-foreground shrink-0" /> : <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />}
           </button>
 
           {openFolders.fitness && (
@@ -644,9 +642,9 @@ function ProfilePage() {
               <button
                 type="button"
                 onClick={saveFitness}
-                className="cursor-pointer inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
+                className="cursor-pointer inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-600 transition"
               >
-                <Save className="h-4 w-4" /> {savedFlash ? "Saved ✓" : "Save Targets"}
+                <Save className="h-4 w-4 shrink-0" /> {savedFlash ? "Saved ✓" : "Save Targets"}
               </button>
             </div>
           )}
@@ -660,15 +658,15 @@ function ProfilePage() {
             className="flex w-full items-center justify-between p-5 text-left font-bold text-foreground hover:bg-muted/50 transition cursor-pointer"
           >
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-500/10 text-sky-500">
-                <Sun className="h-5 w-5" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-500/10 text-sky-500 border border-sky-500/20 shrink-0">
+                <Sun className="h-5 w-5 shrink-0" />
               </div>
               <div>
                 <h3 className="text-sm font-bold">Theme &amp; Appearance</h3>
                 <p className="text-[11px] font-normal text-muted-foreground">Light, dark, or follow device settings</p>
               </div>
             </div>
-            {openFolders.theme ? <ChevronDown className="h-5 w-5 text-muted-foreground" /> : <ChevronRight className="h-5 w-5 text-muted-foreground" />}
+            {openFolders.theme ? <ChevronDown className="h-5 w-5 text-muted-foreground shrink-0" /> : <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />}
           </button>
 
           {openFolders.theme && (
@@ -676,29 +674,29 @@ function ProfilePage() {
               <button
                 type="button"
                 onClick={() => applyTheme("dark")}
-                className={`flex-1 py-2.5 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
-                  theme === "dark" ? "bg-primary text-primary-foreground border-primary" : "bg-card text-muted-foreground border-border hover:text-foreground"
+                className={`flex-1 py-2.5 rounded-xl border text-xs font-extrabold transition flex items-center justify-center gap-2 cursor-pointer ${
+                  theme === "dark" ? "bg-emerald-500 text-white border-emerald-600/30 shadow-xs" : "bg-card text-muted-foreground border-border hover:text-foreground"
                 }`}
               >
-                <Moon className="h-4 w-4" /> Dark Mode
+                <Moon className="h-4 w-4 shrink-0" /> Dark Mode
               </button>
               <button
                 type="button"
                 onClick={() => applyTheme("light")}
-                className={`flex-1 py-2.5 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
-                  theme === "light" ? "bg-primary text-primary-foreground border-primary" : "bg-card text-muted-foreground border-border hover:text-foreground"
+                className={`flex-1 py-2.5 rounded-xl border text-xs font-extrabold transition flex items-center justify-center gap-2 cursor-pointer ${
+                  theme === "light" ? "bg-emerald-500 text-white border-emerald-600/30 shadow-xs" : "bg-card text-muted-foreground border-border hover:text-foreground"
                 }`}
               >
-                <Sun className="h-4 w-4" /> Light Mode
+                <Sun className="h-4 w-4 shrink-0" /> Light Mode
               </button>
               <button
                 type="button"
                 onClick={() => applyTheme("system")}
-                className={`flex-1 py-2.5 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
-                  theme === "system" ? "bg-primary text-primary-foreground border-primary" : "bg-card text-muted-foreground border-border hover:text-foreground"
+                className={`flex-1 py-2.5 rounded-xl border text-xs font-extrabold transition flex items-center justify-center gap-2 cursor-pointer ${
+                  theme === "system" ? "bg-emerald-500 text-white border-emerald-600/30 shadow-xs" : "bg-card text-muted-foreground border-border hover:text-foreground"
                 }`}
               >
-                <Laptop className="h-4 w-4" /> System
+                <Laptop className="h-4 w-4 shrink-0" /> System
               </button>
             </div>
           )}
@@ -712,15 +710,15 @@ function ProfilePage() {
             className="flex w-full items-center justify-between p-5 text-left font-bold text-foreground hover:bg-muted/50 transition cursor-pointer"
           >
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-500">
-                <Sparkles className="h-5 w-5" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/20 shrink-0">
+                <Sparkles className="h-5 w-5 shrink-0" />
               </div>
               <div>
                 <h3 className="text-sm font-bold">Monthly Billing &amp; Subscriptions</h3>
                 <p className="text-[11px] font-normal text-muted-foreground">Manage recurring deductions &amp; cancel anytime</p>
               </div>
             </div>
-            {openFolders.subscription ? <ChevronDown className="h-5 w-5 text-muted-foreground" /> : <ChevronRight className="h-5 w-5 text-muted-foreground" />}
+            {openFolders.subscription ? <ChevronDown className="h-5 w-5 text-muted-foreground shrink-0" /> : <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />}
           </button>
 
           {openFolders.subscription && (
@@ -751,7 +749,7 @@ function ProfilePage() {
                     onClick={() => setShowUpgradeModal(true)}
                     className="cursor-pointer inline-flex items-center gap-2 rounded-xl bg-amber-500 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-amber-600 transition"
                   >
-                    <Sparkles className="h-4 w-4" /> Subscribe with PayPal (R49.00 / mo)
+                    <Sparkles className="h-4 w-4 shrink-0" /> Subscribe with PayPal (R49.00 / mo)
                   </button>
                 )}
               </div>
@@ -759,11 +757,11 @@ function ProfilePage() {
           )}
         </div>
 
-        {/* 5. ACCOUNT ACTIONS & SIGN OUT */}
+        {/* 4. ACCOUNT ACTIONS & SIGN OUT */}
         <div className="rounded-3xl border border-border bg-card p-6 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="space-y-1">
             <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-              <LogOut className="h-4 w-4 text-rose-500" /> Account Authentication
+              <LogOut className="h-4 w-4 text-rose-500 shrink-0" /> Account Authentication
             </h3>
             <p className="text-xs text-muted-foreground">
               Sign out of your active NutriFit session across this browser.
@@ -773,9 +771,9 @@ function ProfilePage() {
           <button
             type="button"
             onClick={handleSignOut}
-            className="flex items-center gap-2 rounded-xl bg-rose-500/10 border border-rose-500/20 px-5 py-2.5 text-xs font-bold text-rose-500 hover:bg-rose-500/20 transition cursor-pointer"
+            className="flex items-center gap-2 rounded-xl bg-rose-500/10 border border-rose-500/20 px-5 py-2.5 text-xs font-bold text-rose-500 hover:bg-rose-500/20 transition cursor-pointer shrink-0"
           >
-            <LogOut className="h-4 w-4" /> Sign Out of App
+            <LogOut className="h-4 w-4 shrink-0" /> Sign Out of App
           </button>
         </div>
       </div>
@@ -784,10 +782,10 @@ function ProfilePage() {
       {showUpgradeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in">
           <div className="w-full max-w-md overflow-hidden rounded-3xl border border-border bg-card p-6 shadow-2xl space-y-5">
-            <div className="flex items-center justify-between border-b border-border pb-3">
+            <div className="flex items-center justify-between border-b border-border/60 pb-3">
               <div className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-amber-500" />
-                <h3 className="font-display text-base font-bold text-foreground">
+                <Sparkles className="h-5 w-5 text-amber-500 shrink-0" />
+                <h3 className="text-base font-extrabold text-foreground">
                   Activate Monthly Plan
                 </h3>
               </div>
@@ -805,9 +803,9 @@ function ProfilePage() {
                 R49.00 / month (Automated Recurring Deduction)
               </p>
               <ul className="space-y-1 text-muted-foreground text-[11px]">
-                <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-500" /> Unlimited NutriGuide AI voice coaching</li>
-                <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-500" /> Full access to verified recipes catalog</li>
-                <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-500" /> 1-click cancellation anytime</li>
+                <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" /> Unlimited NutriGuide AI voice coaching</li>
+                <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" /> Full access to verified recipes catalog</li>
+                <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" /> 1-click cancellation anytime</li>
               </ul>
             </div>
 
@@ -815,7 +813,7 @@ function ProfilePage() {
             <div className="pt-2 min-h-[50px] flex flex-col items-center justify-center">
               {loadingPayPal && (
                 <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  <Loader2 className="h-4 w-4 animate-spin text-emerald-500 shrink-0" />
                   <span>Loading PayPal buttons...</span>
                 </div>
               )}
@@ -833,7 +831,7 @@ function ProfilePage() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</span>
       {children}
     </label>
   );

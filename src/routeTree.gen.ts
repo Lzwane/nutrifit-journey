@@ -21,6 +21,8 @@ import { Route as AppCoachRouteImport } from './routes/app/coach'
 import { Route as AppCommunityRouteImport } from './routes/app/community'
 import { Route as AppNutritionRouteImport } from './routes/app/nutrition'
 import { Route as AppProfileRouteImport } from './routes/app/profile'
+import { Route as AppRunningRouteImport } from './routes/app/running'
+import { Route as AppStoreRouteImport } from './routes/app/store'
 import { Route as AppRecipesIndexRouteImport } from './routes/app/recipes.index'
 import { Route as AppRecipesIdRouteImport } from './routes/app/recipes.$id'
 import { Route as AppWorkoutsIndexRouteImport } from './routes/app/workouts.index'
@@ -86,6 +88,16 @@ const AppProfileRoute = AppProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppRunningRoute = AppRunningRouteImport.update({
+  id: '/running',
+  path: '/running',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppStoreRoute = AppStoreRouteImport.update({
+  id: '/store',
+  path: '/store',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const AppRecipesIndexRoute = AppRecipesIndexRouteImport.update({
   id: '/recipes/',
   path: '/recipes/',
@@ -118,6 +130,8 @@ export interface FileRoutesByFullPath {
   '/app/community': typeof AppCommunityRoute
   '/app/nutrition': typeof AppNutritionRoute
   '/app/profile': typeof AppProfileRoute
+  '/app/running': typeof AppRunningRoute
+  '/app/store': typeof AppStoreRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
   '/app/recipes/$id': typeof AppRecipesIdRoute
@@ -134,6 +148,8 @@ export interface FileRoutesByTo {
   '/app/community': typeof AppCommunityRoute
   '/app/nutrition': typeof AppNutritionRoute
   '/app/profile': typeof AppProfileRoute
+  '/app/running': typeof AppRunningRoute
+  '/app/store': typeof AppStoreRoute
   '/admin': typeof AdminIndexRoute
   '/app': typeof AppIndexRoute
   '/app/recipes/$id': typeof AppRecipesIdRoute
@@ -153,6 +169,8 @@ export interface FileRoutesById {
   '/app/community': typeof AppCommunityRoute
   '/app/nutrition': typeof AppNutritionRoute
   '/app/profile': typeof AppProfileRoute
+  '/app/running': typeof AppRunningRoute
+  '/app/store': typeof AppStoreRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
   '/app/recipes/$id': typeof AppRecipesIdRoute
@@ -173,6 +191,8 @@ export interface FileRouteTypes {
     | '/app/community'
     | '/app/nutrition'
     | '/app/profile'
+    | '/app/running'
+    | '/app/store'
     | '/admin/'
     | '/app/'
     | '/app/recipes/$id'
@@ -189,6 +209,8 @@ export interface FileRouteTypes {
     | '/app/community'
     | '/app/nutrition'
     | '/app/profile'
+    | '/app/running'
+    | '/app/store'
     | '/admin'
     | '/app'
     | '/app/recipes/$id'
@@ -207,6 +229,8 @@ export interface FileRouteTypes {
     | '/app/community'
     | '/app/nutrition'
     | '/app/profile'
+    | '/app/running'
+    | '/app/store'
     | '/admin/'
     | '/app/'
     | '/app/recipes/$id'
@@ -310,6 +334,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProfileRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/app/running': {
+      id: '/app/running'
+      path: '/running'
+      fullPath: '/app/running'
+      preLoaderRoute: typeof AppRunningRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/store': {
+      id: '/app/store'
+      path: '/store'
+      fullPath: '/app/store'
+      preLoaderRoute: typeof AppStoreRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/app/recipes/': {
       id: '/app/recipes/'
       path: '/recipes'
@@ -358,6 +396,8 @@ interface AppRouteRouteChildren {
   AppCommunityRoute: typeof AppCommunityRoute
   AppNutritionRoute: typeof AppNutritionRoute
   AppProfileRoute: typeof AppProfileRoute
+  AppRunningRoute: typeof AppRunningRoute
+  AppStoreRoute: typeof AppStoreRoute
   AppIndexRoute: typeof AppIndexRoute
   AppRecipesIdRoute: typeof AppRecipesIdRoute
   AppWorkoutsIdRoute: typeof AppWorkoutsIdRoute
@@ -370,6 +410,8 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppCommunityRoute: AppCommunityRoute,
   AppNutritionRoute: AppNutritionRoute,
   AppProfileRoute: AppProfileRoute,
+  AppRunningRoute: AppRunningRoute,
+  AppStoreRoute: AppStoreRoute,
   AppIndexRoute: AppIndexRoute,
   AppRecipesIdRoute: AppRecipesIdRoute,
   AppWorkoutsIdRoute: AppWorkoutsIdRoute,

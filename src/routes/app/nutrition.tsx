@@ -11,7 +11,6 @@ import {
   PenTool,
   Check,
   X,
-  Flame,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
@@ -145,21 +144,23 @@ function NutritionPage() {
       reader.onload = () => {
         const result = reader.result as string;
         const base64 = result.split(",")[1];
-        resolve({ base64, mimeType: file.type });
+        resolve({ base64, mimeType: file.type || "image/jpeg" });
       };
       reader.onerror = (error) => reject(error);
       reader.readAsDataURL(file);
     });
   };
 
-  // Handle AI Vision Scan via Direct Gemini REST Endpoint
+  // Handle AI Vision Scan via Direct Claude Endpoint
   const handleFoodScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
 
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
+    const workspaceId = import.meta.env.VITE_ANTHROPIC_WORKSPACE_ID;
+
     if (!apiKey) {
-      alert("VITE_GEMINI_API_KEY is missing in your .env file.");
+      alert("VITE_ANTHROPIC_API_KEY is missing in your .env file.");
       return;
     }
 
@@ -168,25 +169,43 @@ function NutritionPage() {
     try {
       const { base64, mimeType } = await fileToBase64(file);
 
+      const headers: Record<string, string> = {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+        "anthropic-dangerous-direct-browser-access": "true",
+      };
+
+      if (workspaceId) {
+        headers["anthropic-workspace-id"] = workspaceId;
+      }
+
       const promptText = `Analyze this food image. Estimate nutritional values and respond ONLY with a raw JSON object formatted strictly as:
 {"food_name": "string", "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number}`;
 
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`;
-
-      const response = await fetch(endpoint, {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
-          contents: [
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 400,
+          system: "You are a professional nutrition vision analyst. Output strictly valid JSON without markdown wrapping, explanations, or code fences.",
+          messages: [
             {
-              parts: [
+              role: "user",
+              content: [
                 {
-                  inline_data: {
-                    mime_type: mimeType,
+                  type: "image",
+                  source: {
+                    type: "base64",
+                    media_type: mimeType,
                     data: base64,
                   },
                 },
-                { text: promptText },
+                {
+                  type: "text",
+                  text: promptText,
+                },
               ],
             },
           ],
@@ -195,11 +214,11 @@ function NutritionPage() {
 
       if (!response.ok) {
         const errJson = await response.json();
-        throw new Error(errJson.error?.message || "Failed to reach Gemini API");
+        throw new Error(errJson.error?.message || "Failed to reach Claude API");
       }
 
       const resData = await response.json();
-      const rawText = resData.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+      const rawText = resData.content?.[0]?.text || "{}";
 
       // Clean markdown fencing around JSON if present
       const cleanJsonStr = rawText
@@ -224,7 +243,7 @@ function NutritionPage() {
       showToast(`AI Logged: ${nutritionData.food_name || "Meal"} (${nutritionData.calories || 0} kcal)! ✨`);
     } catch (err: any) {
       console.error("Food scan error:", err);
-      alert("Failed to analyze food: " + (err.message || "Invalid image or key error"));
+      alert("Failed to analyze food: " + (err.message || "Invalid image or API key error"));
     } finally {
       setAnalyzing(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -400,7 +419,7 @@ function NutritionPage() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Grilled Chicken & Rice"
+                  placeholder="e.g. Grilled Chicken &amp; Rice"
                   value={mealName}
                   onChange={(e) => setMealName(e.target.value)}
                   className="mt-1 w-full rounded-xl border border-input bg-background px-3.5 py-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"

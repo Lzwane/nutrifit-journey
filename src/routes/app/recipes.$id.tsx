@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ArrowLeft, Clock, Flame, Users, Plus, ChefHat, Check } from "lucide-react";
+import { ArrowLeft, Clock, Flame, Users, Plus, ChefHat, Check, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { POPULAR_RECIPES } from "@/data/recipes";
@@ -15,7 +15,6 @@ export const Route = createFileRoute("/app/recipes/$id")({
   component: RecipeDetail,
 });
 
-// Detailed ingredient & step fallbacks for all local SA recipes
 const LOCAL_RECIPE_DETAILS: Record<string, { ingredients: { item: string; amount: string }[]; instructions: string[] }> = {
   "chakalaka-chicken-breast": {
     ingredients: [
@@ -299,7 +298,6 @@ function RecipeDetail() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. First try fetching from Supabase database
     supabase
       .from("recipes")
       .select("*")
@@ -310,15 +308,15 @@ function RecipeDetail() {
           setR(data);
           setLoading(false);
         } else {
-          // 2. Fall back to local SA recipe catalog
           const localMatch = POPULAR_RECIPES.find((item) => item.id === id);
           if (localMatch) {
+            const rawLocal = localMatch as any;
             const extraDetails = LOCAL_RECIPE_DETAILS[id] || {
-              ingredients: localMatch.ingredients || [
+              ingredients: rawLocal.ingredients || [
                 { item: "Main Protein / Grain", amount: "Standard Portion" },
                 { item: "Traditional Spices & Seasoning", amount: "To taste" },
               ],
-              instructions: localMatch.instructions || [
+              instructions: rawLocal.instructions || [
                 "Prepare all fresh ingredients.",
                 "Cook according to traditional South African stovetop methods.",
                 "Serve warm and enjoy!",
@@ -341,11 +339,10 @@ function RecipeDetail() {
   const addToLog = async () => {
     if (!user || !r) return;
 
-    // Direct insertion into user's food_logs table in Supabase
     await supabase.from("food_logs").insert({
       user_id: user.id,
       meal_name: r.title,
-      calories: r.calories_per_serving ?? 0,
+      calories: r.calories_per_serving ?? r.calories ?? 0,
       protein_g: r.protein_g ?? 0,
       carbs_g: r.carbs_g ?? 0,
       fat_g: r.fat_g ?? 0,
@@ -357,74 +354,74 @@ function RecipeDetail() {
 
   if (loading) {
     return (
-      <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
-        Loading recipe details...
+      <div className="flex h-64 items-center justify-center text-xs sm:text-sm text-muted-foreground font-sans">
+        <Loader2 className="h-5 w-5 animate-spin text-emerald-500 mr-2 shrink-0" /> Loading recipe details...
       </div>
     );
   }
 
   if (!r) {
     return (
-      <div className="space-y-4 text-center py-12">
+      <div className="space-y-4 text-center py-12 font-sans">
         <p className="text-muted-foreground">Recipe not found.</p>
-        <Link to="/app/recipes" className="inline-flex items-center gap-1 text-sm font-semibold text-primary">
-          <ArrowLeft className="h-4 w-4" /> Back to recipes
+        <Link to="/app/recipes" className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-500">
+          <ArrowLeft className="h-4 w-4 shrink-0" /> Back to recipes
         </Link>
       </div>
     );
   }
 
-  const totalTime = (r.prep_minutes || 0) + (r.cook_minutes || 0);
+  const totalTime = (r.prep_minutes || 0) + (r.cook_minutes || 0) || r.prep_time || "20 mins";
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-5xl mx-auto font-sans pb-12 w-full">
       <Link
         to="/app/recipes"
-        className="inline-flex items-center gap-1 text-sm font-semibold text-muted-foreground hover:text-foreground transition"
+        className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-extrabold text-muted-foreground hover:text-foreground transition"
       >
-        <ArrowLeft className="h-4 w-4" /> All recipes
+        <ArrowLeft className="h-4 w-4 shrink-0" /> Back to recipes
       </Link>
 
       {/* Main Recipe Banner */}
       <div className="overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
-        <div className="grid h-48 place-items-center bg-primary/10">
-          <ChefHat className="h-16 w-16 text-primary" />
+        <div className="grid h-48 place-items-center bg-emerald-500/10">
+          <ChefHat className="h-16 w-16 text-emerald-500 shrink-0" />
         </div>
         <div className="p-6 space-y-4">
           <div>
-            <h1 className="font-display text-3xl font-extrabold text-foreground">{r.title}</h1>
-            <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{r.description}</p>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-foreground">{r.title}</h1>
+            <p className="mt-2 text-xs sm:text-sm text-muted-foreground leading-relaxed">{r.description}</p>
           </div>
 
-          <div className="flex flex-wrap gap-4 text-sm text-muted-foreground border-y border-border py-3">
-            <span className="flex items-center gap-1.5 font-medium">
-              <Clock className="h-4 w-4 text-primary" /> {totalTime} min total
+          <div className="flex flex-wrap gap-4 text-xs sm:text-sm text-muted-foreground border-y border-border/60 py-3">
+            <span className="flex items-center gap-1.5 font-bold">
+              <Clock className="h-4 w-4 text-emerald-500 shrink-0" /> {typeof totalTime === "number" ? `${totalTime} min total` : totalTime}
             </span>
-            <span className="flex items-center gap-1.5 font-medium">
-              <Users className="h-4 w-4 text-blue-500" /> {r.servings || 1} serving(s)
+            <span className="flex items-center gap-1.5 font-bold">
+              <Users className="h-4 w-4 text-sky-500 shrink-0" /> {r.servings || 1} serving(s)
             </span>
-            <span className="flex items-center gap-1.5 font-medium">
-              <Flame className="h-4 w-4 text-orange-500" /> {r.calories_per_serving ?? 0} cal / serving
+            <span className="flex items-center gap-1.5 font-bold text-orange-500">
+              <Flame className="h-4 w-4 text-orange-500 shrink-0" /> {r.calories_per_serving ?? r.calories ?? 0} kcal / serving
             </span>
           </div>
 
           {/* Macro Breakdown Grid */}
           <div className="grid grid-cols-4 gap-2 text-center">
-            <div className="rounded-xl bg-muted/50 p-2.5">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Protein</p>
-              <p className="font-display text-base font-bold text-emerald-600 dark:text-emerald-400">{r.protein_g ?? 0}g</p>
+            <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-2.5">
+              <p className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Protein</p>
+              <p className="text-sm sm:text-base font-extrabold text-emerald-600 dark:text-emerald-400">{r.protein_g ?? r.protein ?? 0}g</p>
             </div>
-            <div className="rounded-xl bg-muted/50 p-2.5">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Carbs</p>
-              <p className="font-display text-base font-bold text-foreground">{r.carbs_g ?? 0}g</p>
+            <div className="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-2.5">
+              <p className="text-[10px] font-extrabold uppercase tracking-wider text-sky-600 dark:text-sky-400">Carbs</p>
+              <p className="text-sm sm:text-base font-extrabold text-foreground">{r.carbs_g ?? r.carbs ?? 0}g</p>
             </div>
-            <div className="rounded-xl bg-muted/50 p-2.5">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Fat</p>
-              <p className="font-display text-base font-bold text-foreground">{r.fat_g ?? 0}g</p>
+            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-2.5">
+              <p className="text-[10px] font-extrabold uppercase tracking-wider text-amber-600 dark:text-amber-400">Fat</p>
+              <p className="text-sm sm:text-base font-extrabold text-foreground">{r.fat_g ?? r.fat ?? 0}g</p>
             </div>
-            <div className="rounded-xl bg-muted/50 p-2.5">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Fiber</p>
-              <p className="font-display text-base font-bold text-foreground">{r.fiber_g ?? 0}g</p>
+            <div className="rounded-2xl border border-border bg-muted/40 p-2.5">
+              <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Fiber</p>
+              <p className="text-sm sm:text-base font-extrabold text-foreground">{r.fiber_g ?? 0}g</p>
             </div>
           </div>
 
@@ -432,15 +429,15 @@ function RecipeDetail() {
           <button
             onClick={addToLog}
             disabled={added}
-            className="w-full sm:w-auto cursor-pointer inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 disabled:opacity-70"
+            className="w-full sm:w-auto cursor-pointer inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-6 py-3.5 text-xs sm:text-sm font-bold text-white shadow-sm transition hover:bg-emerald-600 active:scale-95 disabled:opacity-70"
           >
             {added ? (
               <>
-                <Check className="h-4 w-4 text-emerald-400" /> Added to Nutrition Log ✓
+                <Check className="h-4 w-4 text-white shrink-0" /> Added to Nutrition Log ✓
               </>
             ) : (
               <>
-                <Plus className="h-4 w-4" /> Add to Nutrition Log
+                <Plus className="h-4 w-4 shrink-0" /> Add to Nutrition Log
               </>
             )}
           </button>
@@ -451,12 +448,12 @@ function RecipeDetail() {
       <div className="grid gap-6 md:grid-cols-2">
         {/* Ingredients List */}
         <section className="rounded-3xl border border-border bg-card p-6 shadow-sm">
-          <h2 className="mb-4 font-display text-lg font-bold text-foreground">Ingredients</h2>
-          <ul className="space-y-2.5 text-sm">
+          <h2 className="mb-4 text-base sm:text-lg font-extrabold text-foreground">Ingredients</h2>
+          <ul className="space-y-2.5 text-xs sm:text-sm">
             {(r.ingredients ?? []).map((ing: any, i: number) => (
               <li key={i} className="flex items-center justify-between border-b border-border/60 pb-2.5 last:border-0">
-                <span className="font-medium text-foreground">{typeof ing === "string" ? ing : ing.item}</span>
-                {ing.amount && <span className="text-xs font-semibold text-muted-foreground">{ing.amount}</span>}
+                <span className="font-semibold text-foreground">{typeof ing === "string" ? ing : ing.item}</span>
+                {ing.amount && <span className="text-xs font-bold text-muted-foreground font-mono">{ing.amount}</span>}
               </li>
             ))}
             {(!r.ingredients || r.ingredients.length === 0) && (
@@ -467,11 +464,11 @@ function RecipeDetail() {
 
         {/* Instructions Steps */}
         <section className="rounded-3xl border border-border bg-card p-6 shadow-sm">
-          <h2 className="mb-4 font-display text-lg font-bold text-foreground">Instructions</h2>
-          <ol className="space-y-3.5 text-sm">
+          <h2 className="mb-4 text-base sm:text-lg font-extrabold text-foreground">Instructions</h2>
+          <ol className="space-y-3.5 text-xs sm:text-sm">
             {(r.instructions ?? []).map((step: string, i: number) => (
               <li key={i} className="flex items-start gap-3 text-foreground leading-relaxed">
-                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-emerald-500/10 text-xs font-extrabold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                   {i + 1}
                 </span>
                 <span className="pt-0.5">{step}</span>
