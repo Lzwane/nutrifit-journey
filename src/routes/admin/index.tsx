@@ -35,6 +35,7 @@ import {
   ShoppingBag,
   Tag,
   Image as ImageIcon,
+  UploadCloud,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -98,6 +99,44 @@ function resolveUserFullName(p: any): string {
   }
 
   return "Valued Member";
+}
+
+function compressImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+        const maxDimension = 1200;
+
+        if (width > height && width > maxDimension) {
+          height = Math.round((height * maxDimension) / width);
+          width = maxDimension;
+        } else if (height > maxDimension) {
+          width = Math.round((width * maxDimension) / height);
+          height = maxDimension;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(event.target?.result as string);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressedBase64 = canvas.toDataURL("image/jpeg", 0.85);
+        resolve(compressedBase64);
+      };
+      img.onerror = () => resolve(event.target?.result as string);
+      img.src = event.target?.result as string;
+    };
+    reader.onerror = (err) => reject(err);
+    reader.readAsDataURL(file);
+  });
 }
 
 interface RecipeForm {
@@ -169,8 +208,17 @@ interface StoreProduct {
   sizes: string[];
   colors: string[];
   image_url: string;
+  images?: string[];
   tag: string;
   created_at: string;
+}
+
+interface DeleteModalState {
+  isOpen: boolean;
+  type: "recipe" | "product" | "group" | "member" | null;
+  id: string | null;
+  title: string;
+  description: string;
 }
 
 function AdminDashboardPage() {
@@ -196,16 +244,30 @@ function AdminDashboardPage() {
   const [fetchingStore, setFetchingStore] = useState(false);
   const [isStoreModalOpen, setIsStoreModalOpen] = useState(false);
   const [customCategory, setCustomCategory] = useState("");
+  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [storeModalError, setStoreModalError] = useState<string | null>(null);
+  const [uploadingProcessing, setUploadingProcessing] = useState(false);
+
+  // Custom App Delete Confirmation Modal State
+  const [deleteModal, setDeleteModal] = useState<DeleteModalState>({
+    isOpen: false,
+    type: null,
+    id: null,
+    title: "",
+    description: "",
+  });
+  const [deletingLoading, setDeletingLoading] = useState(false);
+
   const [storeForm, setStoreForm] = useState({
     name: "",
     designer: "",
-    campus: "SMU Campus",
+    campus: "University of Johannesburg",
     price_zar: "",
     category: "Gym T-Shirts & Tanks",
     description: "",
     sizes: "S, M, L, XL, 2XL",
     colors: "Black, Green, White",
-    image_url: "",
     tag: "Official Student Drop",
   });
 
@@ -263,7 +325,6 @@ function AdminDashboardPage() {
     fetchStoreProducts();
   }, []);
 
-  // 1. FETCH METRICS - STRICTLY EXCLUDES ANY ADMIN ACCOUNT
   const fetchRealDatabaseMetrics = async () => {
     setMetricsLoading(true);
     const today = new Date().toISOString().slice(0, 10);
@@ -313,7 +374,6 @@ function AdminDashboardPage() {
         setSubscribersList(subs);
       }
 
-      // Fetch Real Activity Logs For Today
       const [{ count: foodCount }, { count: waterCount }, { count: workoutCount }] = await Promise.all([
         supabase.from("food_logs").select("*", { count: "exact", head: true }).eq("log_date", today),
         supabase.from("water_logs").select("*", { count: "exact", head: true }).eq("log_date", today),
@@ -411,10 +471,42 @@ function AdminDashboardPage() {
     }
   };
 
+  const handleImageFilesChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setImageError(null);
+    setStoreModalError(null);
+    setUploadingProcessing(true);
+
+    try {
+      const processed: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const base64 = await compressImage(files[i]);
+        processed.push(base64);
+      }
+      setUploadedImages((prev) => [...prev, ...processed]);
+    } catch (err) {
+      setImageError("Failed to process image files. Please try again.");
+    } finally {
+      setUploadingProcessing(false);
+    }
+  };
+
+  const handleRemoveImage = (index: number) => {
+    setUploadedImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const handleCreateStoreProduct = async (e: React.FormEvent) => {
     e.preventDefault();
+    setStoreModalError(null);
+
+    if (uploadedImages.length === 0) {
+      setStoreModalError("Please upload at least one image of the clothing piece.");
+      return;
+    }
+
     setLoading(true);
-    setErrorMsg(null);
 
     try {
       const finalCategory =
@@ -435,54 +527,113 @@ function AdminDashboardPage() {
       const payload = {
         name: storeForm.name.trim(),
         designer: storeForm.designer.trim() || "Student Creator",
-        campus: storeForm.campus.trim() || "SMU Campus",
+        campus: storeForm.campus.trim() || "University of Johannesburg",
         price_zar: parseFloat(storeForm.price_zar) || 199,
         category: finalCategory,
         description: storeForm.description.trim(),
         sizes: sizesArray.length > 0 ? sizesArray : ["M", "L", "XL"],
         colors: colorsArray.length > 0 ? colorsArray : ["Black", "White"],
-        image_url: storeForm.image_url.trim() || "https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=800&auto=format&fit=crop&q=60",
+        image_url: uploadedImages[0],
+        images: uploadedImages,
         tag: storeForm.tag.trim() || "Official Drop",
       };
 
-      const { error } = await supabase.from("store_products").insert([payload]);
-      if (error) throw error;
+      const { data, error } = await supabase.from("store_products").insert([payload]).select();
 
-      setSuccessMsg(`"${storeForm.name}" has been uploaded to the student store!`);
+      if (error) {
+        if (error.message?.includes("images")) {
+          const fallbackPayload = { ...payload };
+          delete (fallbackPayload as any).images;
+          const { error: fallbackErr } = await supabase.from("store_products").insert([fallbackPayload]);
+          if (fallbackErr) throw fallbackErr;
+        } else {
+          throw error;
+        }
+      }
+
+      setSuccessMsg(`"${storeForm.name}" has been published to the student store!`);
       setStoreForm({
         name: "",
         designer: "",
-        campus: "SMU Campus",
+        campus: "University of Johannesburg",
         price_zar: "",
         category: "Gym T-Shirts & Tanks",
         description: "",
         sizes: "S, M, L, XL, 2XL",
         colors: "Black, Green, White",
-        image_url: "",
         tag: "Official Student Drop",
       });
+      setUploadedImages([]);
       setCustomCategory("");
       setIsStoreModalOpen(false);
       fetchStoreProducts();
     } catch (err: any) {
-      setErrorMsg(err.message || "Failed to upload product to the store.");
+      console.error("Publish error:", err);
+      setStoreModalError(err.message || "Failed to publish item to the store database.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDeleteStoreProduct = async (id: string) => {
-    if (!confirm("Remove this piece of clothing from the store?")) return;
+  // OPEN APPS BEAUTIFUL CUSTOM DELETE MODAL
+  const promptAppDelete = (
+    type: "recipe" | "product" | "group" | "member",
+    id: string,
+    title: string,
+    description: string
+  ) => {
+    setDeleteModal({
+      isOpen: true,
+      type,
+      id,
+      title,
+      description,
+    });
+  };
+
+  // EXECUTE CONFIRMED DELETE ACTION
+  const executeAppDelete = async () => {
+    if (!deleteModal.id || !deleteModal.type) return;
+    setDeletingLoading(true);
+
     try {
-      const { error } = await supabase.from("store_products").delete().eq("id", id);
-      if (error) throw error;
-      fetchStoreProducts();
+      if (deleteModal.type === "recipe") {
+        const { error } = await supabase.from("recipes").delete().eq("id", deleteModal.id);
+        if (error) throw error;
+        fetchOfficialRecipes();
+      } else if (deleteModal.type === "product") {
+        const { error } = await supabase.from("store_products").delete().eq("id", deleteModal.id);
+        if (error) throw error;
+        fetchStoreProducts();
+      } else if (deleteModal.type === "group") {
+        const { error } = await supabase.from("chat_groups").delete().eq("id", deleteModal.id);
+        if (error) throw error;
+        fetchChatGroups();
+      } else if (deleteModal.type === "member") {
+        if (managingMembersGroup) {
+          const { error } = await supabase
+            .from("chat_group_members")
+            .delete()
+            .eq("group_id", managingMembersGroup.id)
+            .eq("user_id", deleteModal.id);
+
+          if (error) throw error;
+          setGroupMembersList((prev) => prev.filter((m) => m.user_id !== deleteModal.id));
+          fetchChatGroups();
+        }
+      }
+
+      setDeleteModal({ isOpen: false, type: null, id: null, title: "", description: "" });
     } catch (err: any) {
-      alert("Failed to delete product: " + err.message);
+      setDeleteModal({
+        ...deleteModal,
+        description: `Error: ${err.message || "Failed to complete deletion."}`,
+      });
+    } finally {
+      setDeletingLoading(false);
     }
   };
 
-  // FETCH GROUP MEMBERS EXCLUDING ADMINS
   const fetchGroupMembers = async (groupId: string) => {
     setLoadingMembers(true);
     try {
@@ -596,18 +747,6 @@ function AdminDashboardPage() {
     }
   };
 
-  const handleDeleteRecipe = async (id: string) => {
-    if (!confirm("Are you sure you want to remove this recipe from the app?")) return;
-
-    try {
-      const { error } = await supabase.from("recipes").delete().eq("id", id);
-      if (error) throw error;
-      fetchOfficialRecipes();
-    } catch (err: any) {
-      alert("Failed to delete recipe: " + err.message);
-    }
-  };
-
   const handleSaveGroup = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -649,7 +788,7 @@ function AdminDashboardPage() {
       setEditingGroup(null);
       fetchChatGroups();
     } catch (err: any) {
-      alert("Failed to save group: " + err.message);
+      setErrorMsg(err.message || "Failed to save group.");
     } finally {
       setLoading(false);
     }
@@ -671,37 +810,6 @@ function AdminDashboardPage() {
     fetchGroupMembers(group.id);
   };
 
-  const handleRemoveMember = async (userId: string) => {
-    if (!managingMembersGroup) return;
-    if (!confirm("Are you sure you want to remove this user from the group?")) return;
-
-    try {
-      const { error } = await supabase
-        .from("chat_group_members")
-        .delete()
-        .eq("group_id", managingMembersGroup.id)
-        .eq("user_id", userId);
-
-      if (error) throw error;
-      setGroupMembersList((prev) => prev.filter((m) => m.user_id !== userId));
-      fetchChatGroups();
-    } catch (err: any) {
-      alert("Failed to remove member: " + err.message);
-    }
-  };
-
-  const handleDeleteGroup = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this chat group? All messages and memberships will be deleted.")) return;
-
-    try {
-      const { error } = await supabase.from("chat_groups").delete().eq("id", id);
-      if (error) throw error;
-      fetchChatGroups();
-    } catch (err: any) {
-      alert("Failed to delete group: " + err.message);
-    }
-  };
-
   const handleApproveRecipe = async (id: string) => {
     try {
       const { error } = await supabase
@@ -712,7 +820,7 @@ function AdminDashboardPage() {
       if (error) throw error;
       setPendingRecipes((prev) => prev.filter((r) => r.id !== id));
     } catch (err: any) {
-      alert("Failed to approve recipe: " + err.message);
+      setErrorMsg(err.message || "Failed to approve recipe.");
     }
   };
 
@@ -728,7 +836,7 @@ function AdminDashboardPage() {
       setActiveRejectId(null);
       setPendingRecipes((prev) => prev.filter((r) => r.id !== id));
     } catch (err: any) {
-      alert("Failed to reject recipe: " + err.message);
+      setErrorMsg(err.message || "Failed to reject recipe.");
     }
   };
 
@@ -767,7 +875,7 @@ function AdminDashboardPage() {
           <button
             type="button"
             onClick={() => setAdminTheme(adminTheme === "dark" ? "light" : "dark")}
-            className={`p-2 rounded-xl border transition ${
+            className={`p-2 rounded-xl border transition cursor-pointer ${
               adminTheme === "dark" ? "border-slate-800 bg-slate-900 text-slate-300" : "border-slate-200 bg-slate-100 text-slate-700"
             }`}
             title="Toggle theme"
@@ -777,7 +885,7 @@ function AdminDashboardPage() {
           <button
             type="button"
             onClick={handleSignOut}
-            className="p-2 rounded-xl border border-rose-500/20 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition"
+            className="p-2 rounded-xl border border-rose-500/20 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition cursor-pointer"
             title="Sign out"
           >
             <LogOut className="h-4 w-4" />
@@ -799,7 +907,7 @@ function AdminDashboardPage() {
               key={item.id}
               type="button"
               onClick={() => setActiveTab(item.id as any)}
-              className={`flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 ${
+              className={`flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
                 isActive
                   ? "bg-emerald-500 text-white shadow-xs"
                   : adminTheme === "dark"
@@ -1140,7 +1248,14 @@ function AdminDashboardPage() {
 
                           <button
                             type="button"
-                            onClick={() => handleDeleteRecipe(recipe.id)}
+                            onClick={() =>
+                              promptAppDelete(
+                                "recipe",
+                                recipe.id,
+                                `Delete "${recipe.title}"?`,
+                                "Are you sure you want to remove this recipe from the app catalog? This cannot be undone."
+                              )
+                            }
                             className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition shrink-0 cursor-pointer"
                             title="Delete this recipe"
                           >
@@ -1187,7 +1302,12 @@ function AdminDashboardPage() {
 
               <button
                 type="button"
-                onClick={() => setIsStoreModalOpen(true)}
+                onClick={() => {
+                  setUploadedImages([]);
+                  setImageError(null);
+                  setStoreModalError(null);
+                  setIsStoreModalOpen(true);
+                }}
                 className="self-start sm:self-auto flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-600 active:scale-95 cursor-pointer"
               >
                 <Plus className="h-4 w-4" /> Upload Clothing Item
@@ -1222,7 +1342,7 @@ function AdminDashboardPage() {
                       }`}
                     >
                       <div>
-                        <div className="relative h-44 w-full bg-slate-900">
+                        <div className="relative h-48 w-full bg-slate-900">
                           <img
                             src={product.image_url}
                             alt={product.name}
@@ -1234,6 +1354,11 @@ function AdminDashboardPage() {
                           <span className="absolute bottom-2 left-2 rounded-md bg-black/80 px-2 py-0.5 text-[10px] font-mono font-bold text-white">
                             R{product.price_zar}.00
                           </span>
+                          {product.images && product.images.length > 1 && (
+                            <span className="absolute bottom-2 right-2 rounded-md bg-black/80 px-2 py-0.5 text-[10px] font-mono font-bold text-emerald-400">
+                              {product.images.length} photos
+                            </span>
+                          )}
                         </div>
 
                         <div className="p-4 space-y-2">
@@ -1241,7 +1366,14 @@ function AdminDashboardPage() {
                             <h3 className="text-sm font-bold text-slate-100 line-clamp-1">{product.name}</h3>
                             <button
                               type="button"
-                              onClick={() => handleDeleteStoreProduct(product.id)}
+                              onClick={() =>
+                                promptAppDelete(
+                                  "product",
+                                  product.id,
+                                  `Delete "${product.name}"?`,
+                                  "This piece of clothing and its photo gallery will be permanently removed from the student store."
+                                )
+                              }
                               className="p-1 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition shrink-0 cursor-pointer"
                               title="Delete clothing item"
                             >
@@ -1480,7 +1612,14 @@ function AdminDashboardPage() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleDeleteGroup(group.id)}
+                              onClick={() =>
+                                promptAppDelete(
+                                  "group",
+                                  group.id,
+                                  `Delete "${group.name}"?`,
+                                  "All message threads and member rosters in this group will be deleted permanently."
+                                )
+                              }
                               className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition cursor-pointer"
                               title="Delete Group"
                             >
@@ -1585,19 +1724,34 @@ function AdminDashboardPage() {
       {/* UPLOAD STORE CLOTHING MODAL */}
       {isStoreModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-xs overflow-y-auto">
-          <div className={`w-full max-w-lg rounded-3xl border p-5 sm:p-6 shadow-xl my-auto max-h-[90dvh] overflow-y-auto ${adminTheme === "dark" ? "border-slate-800 bg-slate-900 text-slate-100" : "border-slate-200 bg-white text-slate-900"}`}>
+          <div
+            className={`w-full max-w-lg rounded-3xl border p-5 sm:p-6 shadow-xl my-auto max-h-[90dvh] overflow-y-auto ${
+              adminTheme === "dark" ? "border-slate-800 bg-slate-900 text-slate-100" : "border-slate-200 bg-white text-slate-900"
+            }`}
+          >
             <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
               <h2 className="text-base sm:text-lg font-bold flex items-center gap-2">
                 <ShoppingBag className="h-5 w-5 text-emerald-500" /> Upload Piece of Clothing
               </h2>
               <button
                 type="button"
-                onClick={() => setIsStoreModalOpen(false)}
+                onClick={() => {
+                  setIsStoreModalOpen(false);
+                  setUploadedImages([]);
+                  setImageError(null);
+                  setStoreModalError(null);
+                }}
                 className="text-slate-400 hover:text-white p-1 rounded-lg transition cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
+
+            {storeModalError && (
+              <div className="mb-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs font-semibold text-rose-400 animate-in fade-in">
+                {storeModalError}
+              </div>
+            )}
 
             <form onSubmit={handleCreateStoreProduct} className="space-y-3.5">
               <div>
@@ -1605,7 +1759,7 @@ function AdminDashboardPage() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. SMU Pump Cover Heavyweight T-Shirt"
+                  placeholder="e.g. UJ Pump Cover Heavyweight T-Shirt"
                   value={storeForm.name}
                   onChange={(e) => setStoreForm({ ...storeForm, name: e.target.value })}
                   className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2 text-xs focus:border-emerald-500 focus:outline-none text-slate-100"
@@ -1682,16 +1836,72 @@ function AdminDashboardPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Image URL (High Quality) *</label>
-                <input
-                  type="url"
-                  required
-                  placeholder="https://images.unsplash.com/... or uploaded image URL"
-                  value={storeForm.image_url}
-                  onChange={(e) => setStoreForm({ ...storeForm, image_url: e.target.value })}
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2 text-xs focus:border-emerald-500 focus:outline-none text-slate-100"
-                />
+              {/* MULTI-IMAGE UPLOADER */}
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-slate-400">
+                  Upload Product Photos (PNG, JPG, WEBP, AVIF, HEIC) *
+                </label>
+
+                <div className="relative border-2 border-dashed border-slate-800 hover:border-emerald-500/50 transition rounded-2xl p-4 text-center bg-slate-950/60 group">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleImageFilesChange}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                  />
+                  <div className="flex flex-col items-center justify-center space-y-1 text-xs text-slate-400">
+                    {uploadingProcessing ? (
+                      <Loader2 className="h-6 w-6 animate-spin text-emerald-500 shrink-0 mb-0.5" />
+                    ) : (
+                      <UploadCloud className="h-6 w-6 text-emerald-500 group-hover:scale-110 transition shrink-0 mb-0.5" />
+                    )}
+                    <span className="font-bold text-slate-200">
+                      {uploadingProcessing ? "Optimizing images..." : "Click or drag to select one or multiple images"}
+                    </span>
+                    <span className="text-[10px] text-slate-500">Auto-compressed and uploaded to database</span>
+                  </div>
+                </div>
+
+                {imageError && (
+                  <p className="text-[11px] text-rose-400 font-medium">{imageError}</p>
+                )}
+
+                {/* THUMBNAIL PREVIEWS GRID */}
+                {uploadedImages.length > 0 && (
+                  <div className="pt-2">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+                      Selected Photos ({uploadedImages.length})
+                    </span>
+                    <div className="grid grid-cols-4 gap-2">
+                      {uploadedImages.map((imgSrc, idx) => (
+                        <div
+                          key={idx}
+                          className="relative group rounded-xl overflow-hidden border border-slate-800 h-20 bg-slate-950"
+                        >
+                          <img
+                            src={imgSrc}
+                            alt={`Preview ${idx + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveImage(idx)}
+                            className="absolute top-1 right-1 p-1 bg-black/70 hover:bg-rose-600 rounded-md text-white opacity-0 group-hover:opacity-100 transition cursor-pointer"
+                            title="Remove photo"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                          {idx === 0 && (
+                            <span className="absolute bottom-1 left-1 bg-emerald-500/90 text-white text-[8px] font-black px-1 rounded">
+                              Cover
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1733,18 +1943,23 @@ function AdminDashboardPage() {
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setIsStoreModalOpen(false)}
+                  onClick={() => {
+                    setIsStoreModalOpen(false);
+                    setUploadedImages([]);
+                    setImageError(null);
+                    setStoreModalError(null);
+                  }}
                   className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || uploadingProcessing || uploadedImages.length === 0}
                   className="flex items-center gap-1.5 rounded-xl bg-emerald-500 px-4 py-2 text-xs font-bold text-white shadow transition hover:bg-emerald-600 disabled:opacity-50 cursor-pointer"
                 >
                   {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShoppingBag className="h-3.5 w-3.5" />}
-                  Publish to Store
+                  {loading ? "Publishing to Store..." : "Publish to Store"}
                 </button>
               </div>
             </form>
@@ -1905,7 +2120,14 @@ function AdminDashboardPage() {
 
                       <button
                         type="button"
-                        onClick={() => handleRemoveMember(m.user_id)}
+                        onClick={() =>
+                          promptAppDelete(
+                            "member",
+                            m.user_id,
+                            `Remove ${m.full_name}?`,
+                            `Are you sure you want to remove this member from ${managingMembersGroup.name}?`
+                          )
+                        }
                         className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-600 hover:text-white text-[11px] font-bold transition border border-rose-500/20 cursor-pointer"
                         title="Remove member"
                       >
@@ -2081,6 +2303,51 @@ function AdminDashboardPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOM APP IN-MODAL DELETE CONFIRMATION DIALOG */}
+      {deleteModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-xs animate-in fade-in">
+          <div
+            className={`w-full max-w-sm rounded-3xl border p-6 shadow-2xl space-y-4 ${
+              adminTheme === "dark" ? "border-slate-800 bg-slate-900 text-slate-100" : "border-slate-200 bg-white text-slate-900"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-rose-500/10 text-rose-500 border border-rose-500/20">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-sm font-extrabold truncate">{deleteModal.title}</h3>
+                <p className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">Confirmation Required</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed">
+              {deleteModal.description}
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800/60">
+              <button
+                type="button"
+                disabled={deletingLoading}
+                onClick={() => setDeleteModal({ isOpen: false, type: null, id: null, title: "", description: "" })}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deletingLoading}
+                onClick={executeAppDelete}
+                className="flex items-center gap-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 px-4 py-2 text-xs font-bold text-white shadow transition disabled:opacity-50 cursor-pointer"
+              >
+                {deletingLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                <span>{deletingLoading ? "Deleting..." : "Delete Item"}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

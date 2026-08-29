@@ -1,4 +1,5 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useState, useEffect } from "react";
 import {
   Home,
   Footprints,
@@ -21,16 +22,54 @@ interface AppShellProps {
   children: React.ReactNode;
 }
 
+function formatDisplayName(rawName: string): string {
+  if (!rawName) return "Valued Member";
+  return rawName
+    .replace(/[._-]/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
 export function AppShell({ children }: AppShellProps) {
   const { user, isAdmin } = useAuth();
   const sub = useSubscription();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
+  const [profileName, setProfileName] = useState<string>("");
+
+  useEffect(() => {
+    if (!user) return;
+
+    // Fetch actual full name from profiles table
+    supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.full_name) {
+          setProfileName(data.full_name);
+        }
+      });
+  }, [user]);
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     navigate({ to: "/auth" });
   };
+
+  const rawName =
+    profileName ||
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    user?.email?.split("@")[0] ||
+    "Member";
+
+  const resolvedFullName = formatDisplayName(rawName);
+  const userEmailDisplay = user?.email || "Active User";
 
   const navItems = [
     {
@@ -71,7 +110,7 @@ export function AppShell({ children }: AppShellProps) {
     },
     {
       to: "/app/coach",
-      label: "NutriFit Guide",
+      label: "NutriGuide AI",
       icon: Sparkles,
       exact: false,
       isPro: sub.isExpired,
@@ -133,9 +172,11 @@ export function AppShell({ children }: AppShellProps) {
                   </div>
 
                   {item.isPro && (
-                    <span className={`rounded-full px-2 py-0.5 text-[9px] font-black ${
-                      isActive ? "bg-white text-emerald-600" : "bg-amber-500/20 text-amber-500"
-                    }`}>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[9px] font-black ${
+                        isActive ? "bg-white text-emerald-600" : "bg-amber-500/20 text-amber-500"
+                      }`}
+                    >
                       PRO
                     </span>
                   )}
@@ -155,18 +196,18 @@ export function AppShell({ children }: AppShellProps) {
           </nav>
         </div>
 
-        {/* User Profile Card */}
+        {/* User Profile Footer Card */}
         <div className="pt-4 border-t border-border space-y-3">
           <div className="flex items-center gap-3">
             <div className="h-9 w-9 shrink-0 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold text-xs flex items-center justify-center border border-emerald-500/20">
-              {user?.email?.[0].toUpperCase() || "U"}
+              {resolvedFullName[0]?.toUpperCase() || "U"}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold text-foreground truncate">
-                {user?.email?.split("@")[0]}
+              <p className="text-xs font-extrabold text-foreground truncate">
+                {resolvedFullName}
               </p>
               <p className="text-[10px] text-muted-foreground truncate font-mono">
-                {isAdmin ? "Administrator" : sub.isPremium ? "Premium" : "Trial Member"}
+                {userEmailDisplay}
               </p>
             </div>
           </div>
@@ -189,7 +230,7 @@ export function AppShell({ children }: AppShellProps) {
 
       {/* 3. ELEVATED MOBILE BOTTOM NAVIGATION */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-card/95 backdrop-blur-xl border-t border-border/80 shadow-[0_-8px_30px_rgba(0,0,0,0.12)] pt-1.5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
-        <div 
+        <div
           className="flex items-center gap-1.5 overflow-x-auto no-scrollbar touch-pan-x overscroll-x-contain snap-x snap-mandatory h-14 px-2.5"
           style={{ WebkitOverflowScrolling: "touch" }}
         >
@@ -216,12 +257,18 @@ export function AppShell({ children }: AppShellProps) {
                 <div className="relative flex items-center justify-center shrink-0">
                   <Icon
                     className={`h-5 w-5 shrink-0 transition-transform duration-200 ${
-                      isActive ? "scale-110 text-emerald-500 drop-shadow-[0_2px_8px_rgba(16,185,129,0.35)]" : "text-muted-foreground"
+                      isActive
+                        ? "scale-110 text-emerald-500 drop-shadow-[0_2px_8px_rgba(16,185,129,0.35)]"
+                        : "text-muted-foreground"
                     }`}
                   />
                 </div>
 
-                <span className={`text-[10px] tracking-tight mt-1 leading-none font-bold ${isActive ? "text-emerald-600 dark:text-emerald-400" : ""}`}>
+                <span
+                  className={`text-[10px] tracking-tight mt-1 leading-none font-bold ${
+                    isActive ? "text-emerald-600 dark:text-emerald-400" : ""
+                  }`}
+                >
                   {item.label}
                 </span>
               </Link>
