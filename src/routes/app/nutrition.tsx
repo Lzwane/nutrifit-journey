@@ -29,13 +29,11 @@ function NutritionPage() {
   const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // State variables
   const [analyzing, setAnalyzing] = useState(false);
   const [waterAmount, setWaterAmount] = useState(0);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Manual Food Entry Modal state
   const [isManualOpen, setIsManualOpen] = useState(false);
   const [mealName, setMealName] = useState("");
   const [calories, setCalories] = useState("");
@@ -46,11 +44,9 @@ function NutritionPage() {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  // Fetch logged water from Supabase on load
   useEffect(() => {
     if (!user) return;
 
-    // Fetch today's total water
     supabase
       .from("water_logs")
       .select("amount_ml")
@@ -63,19 +59,16 @@ function NutritionPage() {
         }
       });
 
-    // Check Notification Permission
     if ("Notification" in window && Notification.permission === "granted") {
       setNotificationsEnabled(true);
     }
   }, [user, today]);
 
-  // Trigger Toast Notification
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  // Water Notification Request
   const enableWaterReminders = async () => {
     if (!("Notification" in window)) {
       alert("Browser notifications are not supported on this device.");
@@ -90,7 +83,6 @@ function NutritionPage() {
     }
   };
 
-  // Log Water Intake
   const logWater = async (ml: number) => {
     if (!user) return;
     const newTotal = waterAmount + ml;
@@ -104,7 +96,6 @@ function NutritionPage() {
     } as any);
   };
 
-  // Handle Manual Food Log Submission
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !mealName.trim()) return;
@@ -137,7 +128,6 @@ function NutritionPage() {
     }
   };
 
-  // Convert File to Base64
   const fileToBase64 = (file: File): Promise<{ base64: string; mimeType: string }> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -151,76 +141,109 @@ function NutritionPage() {
     });
   };
 
-  // Handle AI Vision Scan via Direct Claude Endpoint
   const handleFoodScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
-
-    const apiKey = import.meta.env.ANTHROPIC_API_KEY;
-    const workspaceId = import.meta.env.ANTHROPIC_WORKSPACE_ID;
-
-    if (!apiKey) {
-      alert("ANTHROPIC_API_KEY is missing in your .env file.");
-      return;
-    }
 
     setAnalyzing(true);
 
     try {
       const { base64, mimeType } = await fileToBase64(file);
 
-      const headers: Record<string, string> = {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-        "anthropic-dangerous-direct-browser-access": "true",
-      };
-
-      if (workspaceId) {
-        headers["anthropic-workspace-id"] = workspaceId;
-      }
-
       const promptText = `Analyze this food image. Estimate nutritional values and respond ONLY with a raw JSON object formatted strictly as:
 {"food_name": "string", "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number}`;
 
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          model: "claude-haiku-4-5-20251001",
-          max_tokens: 400,
-          system: "You are a professional nutrition vision analyst. Output strictly valid JSON without markdown wrapping, explanations, or code fences.",
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "image",
-                  source: {
-                    type: "base64",
-                    media_type: mimeType,
-                    data: base64,
-                  },
-                },
-                {
-                  type: "text",
-                  text: promptText,
-                },
-              ],
-            },
-          ],
-        }),
-      });
+      let rawText = "";
 
-      if (!response.ok) {
-        const errJson = await response.json();
-        throw new Error(errJson.error?.message || "Failed to reach Claude API");
+      // 1. Try serverless proxy first
+      try {
+        const response = await fetch("/api/coach", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "vision",
+            system: "You are a professional nutrition vision analyst. Output strictly valid JSON without markdown wrapping, explanations, or code fences.",
+            messages: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "image",
+                    source: {
+                      type: "base64",
+                      media_type: mimeType,
+                      data: base64,
+                    },
+                  },
+                  {
+                    type: "text",
+                    text: promptText,
+                  },
+                ],
+              },
+            ],
+          }),
+        });
+
+        const contentType = response.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          const resData = await response.json();
+          rawText = resData.content?.[0]?.text || "";
+        }
+      } catch (err) {
+        console.warn("Backend vision proxy failed, checking direct key...", err);
       }
 
-      const resData = await response.json();
-      const rawText = resData.content?.[0]?.text || "{}";
+      // 2. Direct fallback if proxy returned HTML or failed
+      if (!rawText) {
+        const directKey =
+          (import.meta as any).env?.VITE_ANTHROPIC_API_KEY ||
+          (import.meta as any).env?.ANTHROPIC_API_KEY;
 
-      // Clean markdown fencing around JSON if present
+        if (directKey) {
+          const directResponse = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+              "x-api-key": directKey,
+              "anthropic-version": "2023-06-01",
+              "content-type": "application/json",
+              "anthropic-dangerous-direct-browser-access": "true",
+            },
+            body: JSON.stringify({
+              model: "claude-haiku-4-5-20251001",
+              max_tokens: 400,
+              system: "You are a professional nutrition vision analyst. Output strictly valid JSON without markdown wrapping, explanations, or code fences.",
+              messages: [
+                {
+                  role: "user",
+                  content: [
+                    {
+                      type: "image",
+                      source: {
+                        type: "base64",
+                        media_type: mimeType,
+                        data: base64,
+                      },
+                    },
+                    {
+                      type: "text",
+                      text: promptText,
+                    },
+                  ],
+                },
+              ],
+            }),
+          });
+
+          const directJson = await directResponse.json();
+          rawText = directJson.content?.[0]?.text || "";
+        }
+      }
+
+      if (!rawText) {
+        throw new Error("Unable to reach AI vision service. Please ensure ANTHROPIC_API_KEY is configured.");
+      }
+
       const cleanJsonStr = rawText
         .replace(/```json/gi, "")
         .replace(/```/g, "")
@@ -243,7 +266,7 @@ function NutritionPage() {
       showToast(`AI Logged: ${nutritionData.food_name || "Meal"} (${nutritionData.calories || 0} kcal)! ✨`);
     } catch (err: any) {
       console.error("Food scan error:", err);
-      alert("Failed to analyze food: " + (err.message || "Invalid image or API key error"));
+      alert("Failed to analyze food: " + (err.message || "Invalid image or server response"));
     } finally {
       setAnalyzing(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -252,7 +275,6 @@ function NutritionPage() {
 
   return (
     <div className="space-y-6 relative max-w-7xl mx-auto font-sans pb-12">
-      {/* Quick Pop-up Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-2xl bg-foreground px-4 py-3 text-xs sm:text-sm font-semibold text-background shadow-lg animate-in fade-in slide-in-from-bottom-4">
           <Check className="h-4 w-4 text-emerald-400" />
@@ -260,7 +282,6 @@ function NutritionPage() {
         </div>
       )}
 
-      {/* HEADER WITH LIFETIME FREE BADGE */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-border/60">
         <div>
           <div className="flex items-center gap-2.5">
@@ -277,7 +298,6 @@ function NutritionPage() {
         </div>
       </div>
 
-      {/* Hidden File Input for AI Camera Snap */}
       <input
         type="file"
         accept="image/*"
@@ -287,9 +307,7 @@ function NutritionPage() {
         className="hidden"
       />
 
-      {/* Action Buttons: AI Scan & Manual Entry */}
       <div className="grid gap-4 md:grid-cols-2">
-        {/* AI Camera Card */}
         <div className="rounded-3xl border border-primary/20 bg-primary/5 p-6 text-center shadow-xs flex flex-col items-center justify-between">
           <div>
             <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-xs">
@@ -319,7 +337,6 @@ function NutritionPage() {
           </button>
         </div>
 
-        {/* Manual Log Card */}
         <div className="rounded-3xl border border-border bg-card p-6 text-center shadow-xs flex flex-col items-center justify-between">
           <div>
             <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted text-foreground">
@@ -341,7 +358,6 @@ function NutritionPage() {
         </div>
       </div>
 
-      {/* Water Hydration Card */}
       <div className="rounded-3xl border border-border bg-card p-6 shadow-xs space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
           <div className="flex items-center gap-3">
@@ -356,7 +372,6 @@ function NutritionPage() {
             </div>
           </div>
 
-          {/* Water Notification Toggle */}
           {notificationsEnabled ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 text-xs font-bold text-emerald-600 dark:text-emerald-400">
               <CheckCircle2 className="h-3.5 w-3.5" /> Reminders Active
@@ -372,7 +387,6 @@ function NutritionPage() {
           )}
         </div>
 
-        {/* Quick Water Logging Buttons */}
         <div className="grid grid-cols-3 gap-3">
           <button
             type="button"
@@ -398,7 +412,6 @@ function NutritionPage() {
         </div>
       </div>
 
-      {/* Manual Food Entry Modal */}
       {isManualOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs animate-in fade-in">
           <div className="w-full max-w-md rounded-3xl border border-border bg-card p-6 shadow-2xl space-y-4">

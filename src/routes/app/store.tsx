@@ -7,12 +7,13 @@ import {
   Trash2,
   CheckCircle2,
   Sparkles,
-  Tag,
   ArrowRight,
   X,
   Loader2,
   ShieldCheck,
+  Heart,
 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/app/store")({
@@ -25,149 +26,82 @@ export const Route = createFileRoute("/app/store")({
   component: StorePage,
 });
 
-interface Product {
+interface StoreProduct {
   id: string;
   name: string;
   designer: string;
   campus: string;
-  priceZAR: number;
-  category: "tees" | "hoodies" | "shorts" | "accessories";
+  price_zar: number;
+  category: string;
   description: string;
   sizes: string[];
   colors: string[];
-  imageUrl: string;
+  image_url: string;
   tag: string;
+  created_at: string;
 }
 
 interface CartItem {
-  product: Product;
+  product: StoreProduct;
   selectedSize: string;
   selectedColor: string;
   quantity: number;
 }
-
-const LOCAL_STUDENT_PRODUCTS: Product[] = [
-  {
-    id: "prod-1",
-    name: "SMU Varsity Oversized Gym Tee",
-    designer: "Kagiso M.",
-    campus: "SMU Campus",
-    priceZAR: 249,
-    category: "tees",
-    description: "Heavyweight 240gsm breathable cotton tailored for intense lifting sessions and streetwear style.",
-    sizes: ["S", "M", "L", "XL", "2XL"],
-    colors: ["Jet Black", "Forest Green", "Vintage Cream"],
-    imageUrl: "https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=800&auto=format&fit=crop&q=60",
-    tag: "Campus Bestseller",
-  },
-  {
-    id: "prod-2",
-    name: "Ga-Rankuwa Pump Cover Pullover",
-    designer: "Lethabo Z.",
-    campus: "Tshwane Student Guild",
-    priceZAR: 449,
-    category: "hoodies",
-    description: "Fleece-lined thermal hoodie designed to trap heat during pre-workout warmup and early outdoor runs.",
-    sizes: ["M", "L", "XL", "2XL"],
-    colors: ["Charcoal Grey", "Olive Green"],
-    imageUrl: "https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=800&auto=format&fit=crop&q=60",
-    tag: "New Arrival",
-  },
-  {
-    id: "prod-3",
-    name: "Pretoria Core Mesh Training Shorts",
-    designer: "Sipho D.",
-    campus: "Pretoria West",
-    priceZAR: 199,
-    category: "shorts",
-    description: "5-inch inseam ultra-light double layer performance mesh with deep zip-secure phone pockets.",
-    sizes: ["S", "M", "L", "XL"],
-    colors: ["Midnight Blue", "Matte Black"],
-    imageUrl: "https://images.unsplash.com/photo-1591195853828-11db59a44f6b?w=800&auto=format&fit=crop&q=60",
-    tag: "High Demand",
-  },
-  {
-    id: "prod-4",
-    name: "NutriFit Compression Muscle Vest",
-    designer: "Thabo K.",
-    campus: "Medunsa Athletic Club",
-    priceZAR: 179,
-    category: "tees",
-    description: "Sweat-wicking ribbed elastane blend engineered for maximum upper-body ventilation.",
-    sizes: ["S", "M", "L", "XL"],
-    colors: ["Classic White", "Pitch Black"],
-    imageUrl: "https://images.unsplash.com/photo-1618354691373-d851c5c3a990?w=800&auto=format&fit=crop&q=60",
-    tag: "Athletic Cut",
-  },
-  {
-    id: "prod-5",
-    name: "Unisex High-Rise Gym Leggings",
-    designer: "Nomvula S.",
-    campus: "SMU Health Guild",
-    priceZAR: 299,
-    category: "shorts",
-    description: "Seamless squat-proof compression leggings featuring a high-waist band and side holster pockets.",
-    sizes: ["XS", "S", "M", "L"],
-    colors: ["Forest Green", "Espresso"],
-    imageUrl: "https://images.unsplash.com/photo-1506629082955-511b1aa562c8?w=800&auto=format&fit=crop&q=60",
-    tag: "Squat Proof",
-  },
-  {
-    id: "prod-6",
-    name: "Heritage Lifting Grip Straps & Wrist Wraps",
-    designer: "Vuyo N.",
-    campus: "Pretoria Gym Lab",
-    priceZAR: 129,
-    category: "accessories",
-    description: "Reinforced dual-stitched neoprene padded wrist wraps built for heavy deadlifts and compound pulling.",
-    sizes: ["One Size"],
-    colors: ["Emerald / Gold", "All Black"],
-    imageUrl: "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=800&auto=format&fit=crop&q=60",
-    tag: "Heavy Duty",
-  },
-];
 
 const PAYPAL_CLIENT_ID = "BAAxTcLqIVHVERsaIBE05lJcQiNGux3xmiuizGZiBZpXnlQBt8LGnJW9ei9gVhtwzObCQmwZzt0VJ1Mw4I";
 
 function StorePage() {
   const { user } = useAuth();
 
+  const [products, setProducts] = useState<StoreProduct[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [selectedSizes, setSelectedSizes] = useState<{ [productId: string]: string }>({
-    "prod-1": "L",
-    "prod-2": "L",
-    "prod-3": "M",
-    "prod-4": "M",
-    "prod-5": "S",
-    "prod-6": "One Size",
-  });
-  const [selectedColors, setSelectedColors] = useState<{ [productId: string]: string }>({
-    "prod-1": "Jet Black",
-    "prod-2": "Charcoal Grey",
-    "prod-3": "Matte Black",
-    "prod-4": "Classic White",
-    "prod-5": "Forest Green",
-    "prod-6": "All Black",
-  });
+  
+  const [selectedSizes, setSelectedSizes] = useState<{ [productId: string]: string }>({});
+  const [selectedColors, setSelectedColors] = useState<{ [productId: string]: string }>({});
 
   const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
   const [loadingPayPal, setLoadingPayPal] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const paypalRenderedRef = useRef(false);
 
-  const filteredProducts = LOCAL_STUDENT_PRODUCTS.filter(
+  useEffect(() => {
+    fetchStoreProducts();
+  }, []);
+
+  const fetchStoreProducts = async () => {
+    setLoadingProducts(true);
+    try {
+      const { data, error } = await supabase
+        .from("store_products")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (!error && data) {
+        setProducts(data as StoreProduct[]);
+      }
+    } catch (err) {
+      console.error("Failed to load store products:", err);
+    } finally {
+      setLoadingProducts(false);
+    }
+  };
+
+  const categories = ["all", ...Array.from(new Set(products.map((p) => p.category)))];
+
+  const filteredProducts = products.filter(
     (p) => selectedCategory === "all" || p.category === selectedCategory
   );
 
-  const cartTotalZAR = cart.reduce((sum, item) => sum + item.product.priceZAR * item.quantity, 0);
-  const cartTotalUSD = (cartTotalZAR / 18.5).toFixed(2); // Approximate conversion for PayPal standard capture
+  const cartTotalZAR = cart.reduce((sum, item) => sum + item.product.price_zar * item.quantity, 0);
+  const cartTotalUSD = (cartTotalZAR / 18.5).toFixed(2);
   const totalCartItemsCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
-  const handleAddToCart = (product: Product) => {
-    const size = selectedSizes[product.id] || product.sizes[0];
-    const color = selectedColors[product.id] || product.colors[0];
+  const handleAddToCart = (product: StoreProduct) => {
+    const size = selectedSizes[product.id] || product.sizes[0] || "M";
+    const color = selectedColors[product.id] || product.colors[0] || "Standard";
 
     setCart((prev) => {
       const existingIdx = prev.findIndex(
@@ -250,7 +184,7 @@ function StorePage() {
             },
             onError: function (err: any) {
               console.error("PayPal Error:", err);
-              alert("Payment could not be processed. Please verify details.");
+              alert("Payment could not be processed. Please try again.");
             },
           })
           .render(`#${containerId}`);
@@ -297,7 +231,7 @@ function StorePage() {
             </span>
           </div>
           <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-            Support student designers and gym creators with verified local performance wear.
+            Support local student gym creators and wear exclusive university fitness drops.
           </p>
         </div>
 
@@ -318,140 +252,174 @@ function StorePage() {
       </div>
 
       {/* CATEGORY SELECTOR */}
-      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
-        {[
-          { id: "all", label: "All Items" },
-          { id: "tees", label: "T-Shirts & Tanks" },
-          { id: "hoodies", label: "Hoodies & Pump Covers" },
-          { id: "shorts", label: "Shorts & Bottoms" },
-          { id: "accessories", label: "Lifting Gear" },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setSelectedCategory(tab.id)}
-            className={`cursor-pointer rounded-2xl px-4 py-2 text-xs font-extrabold whitespace-nowrap transition ${
-              selectedCategory === tab.id
-                ? "bg-emerald-500 text-white shadow-xs"
-                : "bg-card border border-border text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      {categories.length > 1 && (
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
+          {categories.map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setSelectedCategory(cat)}
+              className={`cursor-pointer rounded-2xl px-4 py-2 text-xs font-extrabold whitespace-nowrap transition capitalize ${
+                selectedCategory === cat
+                  ? "bg-emerald-500 text-white shadow-xs"
+                  : "bg-card border border-border text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {cat === "all" ? "All Collections" : cat}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {/* PRODUCT GRID */}
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        {filteredProducts.map((p) => (
-          <div
-            key={p.id}
-            className="group flex flex-col justify-between rounded-3xl border border-border bg-card overflow-hidden shadow-xs hover:shadow-md transition duration-200"
-          >
-            <div className="space-y-3">
-              {/* Product Photo & Badge */}
-              <div className="relative h-56 w-full bg-muted overflow-hidden">
-                <img
-                  src={p.imageUrl}
-                  alt={p.name}
-                  className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
-                />
-                <span className="absolute top-3 left-3 rounded-xl bg-card/90 backdrop-blur-md border border-border/80 px-2.5 py-1 text-[10px] font-extrabold text-foreground shadow-xs">
-                  {p.tag}
-                </span>
-                <span className="absolute bottom-3 left-3 rounded-xl bg-black/70 backdrop-blur-md px-2.5 py-0.5 text-[10px] font-bold text-white">
-                  By {p.designer} • {p.campus}
-                </span>
-              </div>
-
-              {/* Title & Info */}
-              <div className="p-5 pb-0 space-y-2">
-                <div className="flex items-baseline justify-between gap-2">
-                  <h3 className="text-base font-extrabold text-foreground group-hover:text-emerald-500 transition line-clamp-1">
-                    {p.name}
-                  </h3>
-                  <span className="text-base font-black text-emerald-600 dark:text-emerald-400 font-mono shrink-0">
-                    R{p.priceZAR}
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
-                  {p.description}
-                </p>
-
-                {/* Size Options */}
-                <div className="pt-2 space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
-                    Select Size
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {p.sizes.map((s) => {
-                      const isSelected = (selectedSizes[p.id] || p.sizes[0]) === s;
-                      return (
-                        <button
-                          key={s}
-                          type="button"
-                          onClick={() => setSelectedSizes((prev) => ({ ...prev, [p.id]: s }))}
-                          className={`cursor-pointer rounded-xl px-2.5 py-1 text-[11px] font-extrabold transition border ${
-                            isSelected
-                              ? "bg-emerald-500 text-white border-emerald-600 shadow-xs"
-                              : "bg-muted/50 border-border text-muted-foreground hover:text-foreground"
-                          }`}
-                        >
-                          {s}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Color Options */}
-                <div className="pt-1 space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
-                    Color: <span className="text-foreground">{selectedColors[p.id] || p.colors[0]}</span>
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {p.colors.map((c) => {
-                      const isSelected = (selectedColors[p.id] || p.colors[0]) === c;
-                      return (
-                        <button
-                          key={c}
-                          type="button"
-                          onClick={() => setSelectedColors((prev) => ({ ...prev, [p.id]: c }))}
-                          className={`cursor-pointer rounded-xl px-2.5 py-0.5 text-[10px] font-bold transition border ${
-                            isSelected
-                              ? "bg-card text-foreground border-emerald-500 shadow-xs"
-                              : "bg-muted/40 border-border text-muted-foreground"
-                          }`}
-                        >
-                          {c}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Add to Tab Button */}
-            <div className="p-5 pt-4">
-              <button
-                type="button"
-                onClick={() => handleAddToCart(p)}
-                className="w-full cursor-pointer flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white py-3 text-xs font-extrabold shadow-sm transition active:scale-95"
-              >
-                <ShoppingBag className="h-4 w-4 shrink-0" />
-                <span>Add to Bag • R{p.priceZAR}</span>
-              </button>
-            </div>
+      {/* PRODUCT CONTENT */}
+      {loadingProducts ? (
+        <div className="flex h-56 items-center justify-center text-xs text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin text-emerald-500 mr-2 shrink-0" /> Loading student catalog...
+        </div>
+      ) : products.length === 0 ? (
+        /* WARM & ATTRACTIVE EMPTY STORE STATE */
+        <div className="rounded-3xl border border-border bg-card p-10 sm:p-14 text-center max-w-2xl mx-auto shadow-sm space-y-4">
+          <div className="flex h-16 w-16 mx-auto items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 font-bold">
+            <ShoppingBag className="h-8 w-8" />
           </div>
-        ))}
-      </div>
+
+          <div className="space-y-2">
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 border border-amber-500/20 px-3 py-1 text-xs font-extrabold text-amber-600 dark:text-amber-400">
+              <Sparkles className="h-3.5 w-3.5" /> Upcoming Drop Coming Soon
+            </span>
+            <h2 className="text-xl sm:text-2xl font-extrabold text-foreground tracking-tight">
+              Exclusive Student Drops in Production!
+            </h2>
+            <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed max-w-lg mx-auto">
+              Our local student designers are preparing custom gym tees, oversized pump covers, and lifting wear for campus athletes.
+            </p>
+          </div>
+
+          <div className="pt-2 flex flex-wrap items-center justify-center gap-2 text-xs font-bold text-muted-foreground">
+            <span className="flex items-center gap-1 rounded-xl bg-muted/40 px-3 py-1.5 border border-border/60">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Student Crafted
+            </span>
+            <span className="flex items-center gap-1 rounded-xl bg-muted/40 px-3 py-1.5 border border-border/60">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Instant PayPal Checkout
+            </span>
+            <span className="flex items-center gap-1 rounded-xl bg-muted/40 px-3 py-1.5 border border-border/60">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Campus Pickups
+            </span>
+          </div>
+        </div>
+      ) : (
+        /* DYNAMIC PRODUCT GRID LOADED FROM ADMIN */
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {filteredProducts.map((p) => (
+            <div
+              key={p.id}
+              className="group flex flex-col justify-between rounded-3xl border border-border bg-card overflow-hidden shadow-xs hover:shadow-md transition duration-200"
+            >
+              <div className="space-y-3">
+                <div className="relative h-56 w-full bg-muted overflow-hidden">
+                  <img
+                    src={p.image_url}
+                    alt={p.name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                  />
+                  <span className="absolute top-3 left-3 rounded-xl bg-card/90 backdrop-blur-md border border-border/80 px-2.5 py-1 text-[10px] font-extrabold text-foreground shadow-xs">
+                    {p.tag || "Official Drop"}
+                  </span>
+                  <span className="absolute bottom-3 left-3 rounded-xl bg-black/75 backdrop-blur-md px-2.5 py-0.5 text-[10px] font-bold text-white">
+                    By {p.designer} • {p.campus}
+                  </span>
+                </div>
+
+                <div className="p-5 pb-0 space-y-2">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h3 className="text-base font-extrabold text-foreground group-hover:text-emerald-500 transition line-clamp-1">
+                      {p.name}
+                    </h3>
+                    <span className="text-base font-black text-emerald-600 dark:text-emerald-400 font-mono shrink-0">
+                      R{p.price_zar}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                    {p.description}
+                  </p>
+
+                  {/* Size Choices */}
+                  {p.sizes && p.sizes.length > 0 && (
+                    <div className="pt-2 space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
+                        Select Size
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {p.sizes.map((s) => {
+                          const isSelected = (selectedSizes[p.id] || p.sizes[0]) === s;
+                          return (
+                            <button
+                              key={s}
+                              type="button"
+                              onClick={() => setSelectedSizes((prev) => ({ ...prev, [p.id]: s }))}
+                              className={`cursor-pointer rounded-xl px-2.5 py-1 text-[11px] font-extrabold transition border ${
+                                isSelected
+                                  ? "bg-emerald-500 text-white border-emerald-600 shadow-xs"
+                                  : "bg-muted/50 border-border text-muted-foreground hover:text-foreground"
+                              }`}
+                            >
+                              {s}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Colour Choices */}
+                  {p.colors && p.colors.length > 0 && (
+                    <div className="pt-1 space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
+                        Colour: <span className="text-foreground">{selectedColors[p.id] || p.colors[0]}</span>
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {p.colors.map((c) => {
+                          const isSelected = (selectedColors[p.id] || p.colors[0]) === c;
+                          return (
+                            <button
+                              key={c}
+                              type="button"
+                              onClick={() => setSelectedColors((prev) => ({ ...prev, [p.id]: c }))}
+                              className={`cursor-pointer rounded-xl px-2.5 py-0.5 text-[10px] font-bold transition border ${
+                                isSelected
+                                  ? "bg-card text-foreground border-emerald-500 shadow-xs"
+                                  : "bg-muted/40 border-border text-muted-foreground"
+                              }`}
+                            >
+                              {c}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-5 pt-4">
+                <button
+                  type="button"
+                  onClick={() => handleAddToCart(p)}
+                  className="w-full cursor-pointer flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white py-3 text-xs font-extrabold shadow-sm transition active:scale-95"
+                >
+                  <ShoppingBag className="h-4 w-4 shrink-0" />
+                  <span>Add to Bag • R{p.price_zar}</span>
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* SLIDE-OVER BAG / CART DRAWER */}
       {isCartOpen && (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs animate-in fade-in">
           <div className="w-full max-w-md h-full bg-card border-l border-border p-5 flex flex-col justify-between shadow-2xl animate-in slide-in-from-right duration-300">
-            {/* Cart Header */}
             <div>
               <div className="flex items-center justify-between border-b border-border/70 pb-4">
                 <div className="flex items-center gap-2">
@@ -470,13 +438,12 @@ function StorePage() {
                 </button>
               </div>
 
-              {/* Items List */}
               <div className="py-4 space-y-3 max-h-[58vh] overflow-y-auto pr-1">
                 {cart.length === 0 ? (
                   <div className="p-10 text-center text-xs text-muted-foreground space-y-2">
                     <ShoppingBag className="h-8 w-8 mx-auto text-emerald-500 opacity-40 shrink-0" />
                     <p className="font-bold text-foreground">Your bag is empty</p>
-                    <p>Add some student-branded clothes from the catalog to checkout.</p>
+                    <p>Add some student apparel to checkout.</p>
                   </div>
                 ) : (
                   cart.map((item, idx) => (
@@ -485,7 +452,7 @@ function StorePage() {
                       className="flex items-center justify-between gap-3 p-3 rounded-2xl border border-border/70 bg-background/50"
                     >
                       <img
-                        src={item.product.imageUrl}
+                        src={item.product.image_url}
                         alt={item.product.name}
                         className="h-14 w-14 rounded-xl object-cover shrink-0"
                       />
@@ -495,7 +462,7 @@ function StorePage() {
                           {item.selectedSize} • {item.selectedColor}
                         </p>
                         <p className="text-xs font-black text-emerald-600 dark:text-emerald-400 font-mono mt-0.5">
-                          R{item.product.priceZAR * item.quantity}
+                          R{item.product.price_zar * item.quantity}
                         </p>
                       </div>
 
@@ -531,7 +498,6 @@ function StorePage() {
               </div>
             </div>
 
-            {/* Cart Footer */}
             {cart.length > 0 && (
               <div className="border-t border-border/70 pt-4 space-y-3">
                 <div className="space-y-1 text-xs">
@@ -540,7 +506,7 @@ function StorePage() {
                     <span className="font-bold text-foreground font-mono">R{cartTotalZAR}.00</span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Campus Pickup / Delivery</span>
+                    <span>Campus Pickup</span>
                     <span className="font-bold text-emerald-600 dark:text-emerald-400">FREE</span>
                   </div>
                   <div className="flex justify-between text-sm font-black text-foreground pt-1 border-t border-border/50">
@@ -591,7 +557,7 @@ function StorePage() {
                 </span>
               </div>
               <p className="text-[11px] text-muted-foreground">
-                Supporting {totalCartItemsCount} student creation{totalCartItemsCount === 1 ? "" : "s"}. Instant payment with PayPal Wallet or Card.
+                Supporting local student creations. Pay directly via PayPal balance or Debit/Credit Card.
               </p>
             </div>
 
@@ -600,7 +566,7 @@ function StorePage() {
                 <CheckCircle2 className="h-10 w-10 text-emerald-500 mx-auto" />
                 <h4 className="text-base font-extrabold text-foreground">Order Paid Successfully!</h4>
                 <p className="text-xs text-muted-foreground">
-                  Your receipt and campus collection details have been sent to your email.
+                  Your campus collection code and receipt have been dispatched.
                 </p>
               </div>
             ) : (
@@ -608,7 +574,7 @@ function StorePage() {
                 {loadingPayPal && (
                   <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin text-emerald-500 shrink-0" />
-                    <span>Loading secure payment buttons...</span>
+                    <span>Connecting secure PayPal checkout...</span>
                   </div>
                 )}
                 <div id="paypal-store-button-container" className="w-full" />

@@ -208,51 +208,68 @@ function AICoachPage() {
     };
   }, [hasAccess]);
 
-  const callClaudeDirect = async (prompt: string, signal?: AbortSignal): Promise<string> => {
-    const apiKey = import.meta.env.ANTHROPIC_API_KEY;
-    const workspaceId = import.meta.env.ANTHROPIC_WORKSPACE_ID;
+  const callClaudeService = async (prompt: string, signal?: AbortSignal): Promise<string> => {
+    const systemPrompt =
+      "You are NutriGuide AI, an encouraging and highly knowledgeable personal nutrition & fitness coach. " +
+      "Provide detailed, actionable, and encouraging explanations. " +
+      "When asked about meals, break down estimated macros (protein, carbs, fats) and calorie counts clearly. " +
+      "When asked about workouts, explain proper form, sets, reps, and recovery techniques. " +
+      "STRICT RULE: Do NOT use markdown formatting, bold markers (**), bullet asterisks (*), or headers (#). " +
+      "Write clean, natural plain text with smooth sentence flow suitable for direct voice reading.";
 
-    if (!apiKey) {
-      throw new Error("Missing ANTHROPIC_API_KEY in your .env file.");
+    // 1. Try Serverless Endpoint First
+    try {
+      const response = await fetch("/api/coach", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal,
+        body: JSON.stringify({
+          system: systemPrompt,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      });
+
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const data = await response.json();
+        if (response.ok && data.content?.[0]?.text) {
+          return data.content[0].text;
+        }
+      }
+    } catch (e) {
+      console.warn("Backend /api/coach unreachable, checking fallback...", e);
     }
 
-    const headers: Record<string, string> = {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-      "anthropic-dangerous-direct-browser-access": "true",
-    };
+    // 2. Direct Browser Fallback (if client-side key exists during local dev)
+    const directKey =
+      (import.meta as any).env?.VITE_ANTHROPIC_API_KEY ||
+      (import.meta as any).env?.ANTHROPIC_API_KEY;
 
-    if (workspaceId) {
-      headers["anthropic-workspace-id"] = workspaceId;
+    if (directKey) {
+      const directResponse = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": directKey,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        signal,
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 450,
+          system: systemPrompt,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      });
+
+      const directData = await directResponse.json();
+      if (directResponse.ok && directData.content?.[0]?.text) {
+        return directData.content[0].text;
+      }
     }
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers,
-      signal,
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 450,
-        system:
-          "You are NutriGuide AI, an encouraging and highly knowledgeable personal nutrition & fitness coach. " +
-          "Provide detailed, actionable, and encouraging explanations. " +
-          "When asked about meals, break down estimated macros (protein, carbs, fats) and calorie counts clearly. " +
-          "When asked about workouts, explain proper form, sets, reps, and recovery techniques. " +
-          "STRICT RULE: Do NOT use markdown formatting, bold markers (**), bullet asterisks (*), or headers (#). " +
-          "Write clean, natural plain text with smooth sentence flow suitable for direct voice reading.",
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      console.error("Anthropic Error Response:", data);
-      throw new Error(data.error?.message || "Anthropic API rejected request.");
-    }
-
-    return data.content?.[0]?.text || "I could not generate a response. Please try again.";
+    throw new Error("Unable to connect to AI Coach. Please ensure ANTHROPIC_API_KEY is saved in your Vercel Environment Variables.");
   };
 
   const handleHandsFreeQuery = async (userPrompt: string) => {
@@ -268,7 +285,7 @@ function AICoachPage() {
     setMessages((prev) => [...prev, userMsg]);
 
     try {
-      const reply = await callClaudeDirect(userPrompt, controller.signal);
+      const reply = await callClaudeService(userPrompt, controller.signal);
       const cleanReply = cleanTextForSpeech(reply);
 
       const coachMsg: Message = { id: (Date.now() + 1).toString(), sender: "coach", text: cleanReply };
@@ -283,7 +300,7 @@ function AICoachPage() {
       setVoiceState("listening");
       setMessages((prev) => [
         ...prev,
-        { id: Date.now().toString(), sender: "coach", text: `Error: ${err.message || "Failed to reach Claude API."}` },
+        { id: Date.now().toString(), sender: "coach", text: `Error: ${err.message || "Failed to reach AI Coach."}` },
       ]);
       try {
         recognitionRef.current?.start();
@@ -368,7 +385,7 @@ function AICoachPage() {
     setMessages((prev) => [...prev, userMsg]);
 
     try {
-      const reply = await callClaudeDirect(userPrompt);
+      const reply = await callClaudeService(userPrompt);
       const cleanReply = cleanTextForSpeech(reply);
 
       const coachMsg: Message = { id: (Date.now() + 1).toString(), sender: "coach", text: cleanReply };
@@ -377,7 +394,7 @@ function AICoachPage() {
       console.error("Text chat failed:", err);
       setMessages((prev) => [
         ...prev,
-        { id: Date.now().toString(), sender: "coach", text: `Error: ${err.message || "Failed to reach Claude API."}` },
+        { id: Date.now().toString(), sender: "coach", text: `Error: ${err.message || "Failed to reach AI Coach."}` },
       ]);
     } finally {
       setLoading(false);
@@ -443,7 +460,6 @@ function AICoachPage() {
 
   return (
     <div className="flex-1 flex flex-col w-full min-h-[75vh] sm:min-h-[82vh] justify-between relative overflow-hidden font-sans">
-      {/* TOP HEADER & NAVIGATION TOGGLE */}
       <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-border/60 shrink-0">
         <h1 className="text-base sm:text-lg font-extrabold text-foreground tracking-tight md:hidden">
           NutriGuide AI
@@ -459,7 +475,6 @@ function AICoachPage() {
           </div>
         </div>
 
-        {/* TOGGLE WITH HIGH-CONTRAST EMERALD ACTIVE PILL */}
         <div className="flex items-center gap-1 rounded-2xl bg-muted/60 p-1 border border-border shadow-xs shrink-0">
           <button
             type="button"
@@ -496,10 +511,8 @@ function AICoachPage() {
         </div>
       </div>
 
-      {/* VIEW 1: LIVE VOICE MODE */}
       {activeTab === "voice" ? (
         <div className="flex-1 flex flex-col items-center justify-between py-6 px-4 text-center relative overflow-hidden w-full my-auto">
-          {/* AMBIENT GLOW */}
           <div
             className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-72 w-72 sm:h-96 sm:w-96 rounded-full blur-3xl pointer-events-none transition-opacity duration-1000 ${
               voiceState === "listening"
@@ -510,7 +523,6 @@ function AICoachPage() {
             }`}
           />
 
-          {/* MAIN INTERACTIVE ORB */}
           <div className="relative my-auto flex flex-col items-center justify-center z-10 py-2">
             <button
               type="button"
@@ -545,7 +557,6 @@ function AICoachPage() {
               </div>
             </button>
 
-            {/* STATUS INDICATOR */}
             <div className="mt-5 sm:mt-7 font-extrabold text-xs sm:text-sm tracking-wide flex items-center justify-center min-h-6">
               {voiceState === "listening" && (
                 <span className="text-emerald-500 flex items-center gap-2">
@@ -571,7 +582,6 @@ function AICoachPage() {
             </div>
           </div>
 
-          {/* ACTION BUTTON */}
           <div className="relative z-10 w-full max-w-xs pt-3">
             <button
               type="button"
@@ -595,7 +605,6 @@ function AICoachPage() {
           </div>
         </div>
       ) : (
-        /* VIEW 2: TEXT CHAT FEED */
         <div className="flex-1 flex flex-col justify-between w-full mx-auto pt-3 space-y-3 min-h-0">
           <div className="flex-1 overflow-y-auto space-y-3 pr-1 min-h-0">
             {messages.map((m) => (

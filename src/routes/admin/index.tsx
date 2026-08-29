@@ -32,6 +32,9 @@ import {
   CreditCard,
   Calendar,
   Sparkles,
+  ShoppingBag,
+  Tag,
+  Image as ImageIcon,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -155,9 +158,24 @@ interface SubscriberInfo {
   card_brand: string | null;
 }
 
+interface StoreProduct {
+  id: string;
+  name: string;
+  designer: string;
+  campus: string;
+  price_zar: number;
+  category: string;
+  description: string;
+  sizes: string[];
+  colors: string[];
+  image_url: string;
+  tag: string;
+  created_at: string;
+}
+
 function AdminDashboardPage() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<"overview" | "recipes" | "community" | "groups" | "subscribers" | "profile">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "subscribers" | "recipes" | "store" | "community" | "groups" | "profile">("overview");
 
   // Theme State
   const [adminTheme, setAdminTheme] = useState<"dark" | "light">("dark");
@@ -172,6 +190,24 @@ function AdminDashboardPage() {
 
   // Recipe Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Store Product States
+  const [storeProducts, setStoreProducts] = useState<StoreProduct[]>([]);
+  const [fetchingStore, setFetchingStore] = useState(false);
+  const [isStoreModalOpen, setIsStoreModalOpen] = useState(false);
+  const [customCategory, setCustomCategory] = useState("");
+  const [storeForm, setStoreForm] = useState({
+    name: "",
+    designer: "",
+    campus: "SMU Campus",
+    price_zar: "",
+    category: "Gym T-Shirts & Tanks",
+    description: "",
+    sizes: "S, M, L, XL, 2XL",
+    colors: "Black, Green, White",
+    image_url: "",
+    tag: "Official Student Drop",
+  });
 
   // Group Modal States
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
@@ -224,6 +260,7 @@ function AdminDashboardPage() {
     fetchOfficialRecipes();
     fetchPendingCommunityRecipes();
     fetchChatGroups();
+    fetchStoreProducts();
   }, []);
 
   // 1. FETCH METRICS - STRICTLY EXCLUDES ANY ADMIN ACCOUNT
@@ -237,7 +274,6 @@ function AdminDashboardPage() {
         .select("*");
 
       if (!pError && profiles) {
-        // Exclude all admin accounts from user metrics and subscriber counts
         const regularUsers = profiles.filter((p: any) => !isAccountAdmin(p));
 
         setTotalUsersCount(regularUsers.length);
@@ -354,6 +390,95 @@ function AdminDashboardPage() {
       console.error("Failed to load chat groups:", err);
     } finally {
       setFetchingGroups(false);
+    }
+  };
+
+  const fetchStoreProducts = async () => {
+    setFetchingStore(true);
+    try {
+      const { data, error } = await supabase
+        .from("store_products")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (!error && data) {
+        setStoreProducts(data as StoreProduct[]);
+      }
+    } catch (err) {
+      console.error("Failed to load store products:", err);
+    } finally {
+      setFetchingStore(false);
+    }
+  };
+
+  const handleCreateStoreProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setErrorMsg(null);
+
+    try {
+      const finalCategory =
+        storeForm.category === "Other"
+          ? customCategory.trim() || "Other Apparel"
+          : storeForm.category;
+
+      const sizesArray = storeForm.sizes
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      const colorsArray = storeForm.colors
+        .split(",")
+        .map((c) => c.trim())
+        .filter(Boolean);
+
+      const payload = {
+        name: storeForm.name.trim(),
+        designer: storeForm.designer.trim() || "Student Creator",
+        campus: storeForm.campus.trim() || "SMU Campus",
+        price_zar: parseFloat(storeForm.price_zar) || 199,
+        category: finalCategory,
+        description: storeForm.description.trim(),
+        sizes: sizesArray.length > 0 ? sizesArray : ["M", "L", "XL"],
+        colors: colorsArray.length > 0 ? colorsArray : ["Black", "White"],
+        image_url: storeForm.image_url.trim() || "https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=800&auto=format&fit=crop&q=60",
+        tag: storeForm.tag.trim() || "Official Drop",
+      };
+
+      const { error } = await supabase.from("store_products").insert([payload]);
+      if (error) throw error;
+
+      setSuccessMsg(`"${storeForm.name}" has been uploaded to the student store!`);
+      setStoreForm({
+        name: "",
+        designer: "",
+        campus: "SMU Campus",
+        price_zar: "",
+        category: "Gym T-Shirts & Tanks",
+        description: "",
+        sizes: "S, M, L, XL, 2XL",
+        colors: "Black, Green, White",
+        image_url: "",
+        tag: "Official Student Drop",
+      });
+      setCustomCategory("");
+      setIsStoreModalOpen(false);
+      fetchStoreProducts();
+    } catch (err: any) {
+      setErrorMsg(err.message || "Failed to upload product to the store.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteStoreProduct = async (id: string) => {
+    if (!confirm("Remove this piece of clothing from the store?")) return;
+    try {
+      const { error } = await supabase.from("store_products").delete().eq("id", id);
+      if (error) throw error;
+      fetchStoreProducts();
+    } catch (err: any) {
+      alert("Failed to delete product: " + err.message);
     }
   };
 
@@ -613,6 +738,7 @@ function AdminDashboardPage() {
     { id: "overview", label: "Oversight", icon: Activity, badge: null },
     { id: "subscribers", label: "Subscribers", icon: CreditCard, badge: premiumUsersCount },
     { id: "recipes", label: "Recipes", icon: ChefHat, badge: null },
+    { id: "store", label: "Clothing Store", icon: ShoppingBag, badge: storeProducts.length || null },
     { id: "community", label: "Review", icon: FileCheck, badge: pendingRecipes.length || null },
     { id: "groups", label: "Groups", icon: Users, badge: null },
     { id: "profile", label: "Settings", icon: Settings, badge: null },
@@ -851,6 +977,10 @@ function AdminDashboardPage() {
                   <span className="font-mono text-emerald-400 font-bold">{publishedRecipes.length} live</span>
                 </div>
                 <div className="flex items-center justify-between border-b border-slate-800/50 pb-3 text-xs">
+                  <span className="font-semibold">Live Clothing Pieces in Store</span>
+                  <span className="font-mono text-emerald-400 font-bold">{storeProducts.length} items</span>
+                </div>
+                <div className="flex items-center justify-between border-b border-slate-800/50 pb-3 text-xs">
                   <span className="font-semibold">Community Submissions to Review</span>
                   <span className="font-mono text-amber-400 font-bold">{pendingRecipes.length} pending</span>
                 </div>
@@ -1042,7 +1172,111 @@ function AdminDashboardPage() {
           </div>
         )}
 
-        {/* TAB 4: REVIEW COMMUNITY RECIPES */}
+        {/* TAB 4: CLOTHING STORE MANAGEMENT */}
+        {activeTab === "store" && (
+          <div className="space-y-6 md:space-y-8 max-w-5xl">
+            <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight flex items-center gap-2">
+                  <ShoppingBag className="h-5 w-5 sm:h-6 sm:w-6 text-emerald-500" /> Student Apparel Store
+                </h1>
+                <p className="text-xs text-slate-400 mt-1">
+                  Upload shirts, hoodies, workout gear, sizes, available colours and Rands pricing.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsStoreModalOpen(true)}
+                className="self-start sm:self-auto flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-600 active:scale-95 cursor-pointer"
+              >
+                <Plus className="h-4 w-4" /> Upload Clothing Item
+              </button>
+            </header>
+
+            {successMsg && (
+              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3.5 text-xs font-semibold text-emerald-400">
+                {successMsg}
+              </div>
+            )}
+
+            <div className={`rounded-3xl border p-4 sm:p-6 shadow-sm ${adminTheme === "dark" ? "border-slate-800 bg-slate-900/60" : "border-slate-200 bg-white"}`}>
+              <h2 className="text-sm sm:text-base font-bold mb-4 flex items-center justify-between">
+                <span>Active Clothing Catalog ({storeProducts.length})</span>
+                {fetchingStore && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
+              </h2>
+
+              {storeProducts.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-800 p-8 text-center text-xs text-slate-400 space-y-2">
+                  <ShoppingBag className="h-8 w-8 mx-auto text-slate-600 opacity-50" />
+                  <p className="font-bold text-slate-200">The store currently has no clothing uploaded.</p>
+                  <p>Click <strong>+ Upload Clothing Item</strong> to add a piece for students to buy via PayPal!</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {storeProducts.map((product) => (
+                    <div
+                      key={product.id}
+                      className={`rounded-2xl border overflow-hidden flex flex-col justify-between shadow-xs transition hover:border-slate-700 ${
+                        adminTheme === "dark" ? "border-slate-800 bg-slate-950" : "border-slate-200 bg-slate-50"
+                      }`}
+                    >
+                      <div>
+                        <div className="relative h-44 w-full bg-slate-900">
+                          <img
+                            src={product.image_url}
+                            alt={product.name}
+                            className="w-full h-full object-cover"
+                          />
+                          <span className="absolute top-2 left-2 rounded-md bg-slate-950/80 px-2 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/30">
+                            {product.category}
+                          </span>
+                          <span className="absolute bottom-2 left-2 rounded-md bg-black/80 px-2 py-0.5 text-[10px] font-mono font-bold text-white">
+                            R{product.price_zar}.00
+                          </span>
+                        </div>
+
+                        <div className="p-4 space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <h3 className="text-sm font-bold text-slate-100 line-clamp-1">{product.name}</h3>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteStoreProduct(product.id)}
+                              className="p-1 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition shrink-0 cursor-pointer"
+                              title="Delete clothing item"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+
+                          <p className="text-xs text-slate-400 line-clamp-2">
+                            {product.description}
+                          </p>
+
+                          <div className="pt-2 text-[11px] space-y-1">
+                            <p className="text-slate-400">
+                              <strong className="text-slate-300">Sizes:</strong> {product.sizes?.join(", ")}
+                            </p>
+                            <p className="text-slate-400">
+                              <strong className="text-slate-300">Colours:</strong> {product.colors?.join(", ")}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-4 pt-0 text-[10px] text-slate-500 border-t border-slate-800/60 mt-3 flex items-center justify-between">
+                        <span>By {product.designer}</span>
+                        <span>{product.campus}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 5: REVIEW COMMUNITY RECIPES */}
         {activeTab === "community" && (
           <div className="space-y-6 md:space-y-8 max-w-5xl">
             <header>
@@ -1176,7 +1410,7 @@ function AdminDashboardPage() {
           </div>
         )}
 
-        {/* TAB 5: CHAT GROUPS */}
+        {/* TAB 6: CHAT GROUPS */}
         {activeTab === "groups" && (
           <div className="space-y-6 md:space-y-8 max-w-5xl">
             <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -1281,7 +1515,7 @@ function AdminDashboardPage() {
           </div>
         )}
 
-        {/* TAB 6: ADMIN SETTINGS */}
+        {/* TAB 7: ADMIN SETTINGS */}
         {activeTab === "profile" && (
           <div className="space-y-6 md:space-y-8 max-w-2xl">
             <header>
@@ -1347,6 +1581,176 @@ function AdminDashboardPage() {
           </div>
         )}
       </main>
+
+      {/* UPLOAD STORE CLOTHING MODAL */}
+      {isStoreModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-xs overflow-y-auto">
+          <div className={`w-full max-w-lg rounded-3xl border p-5 sm:p-6 shadow-xl my-auto max-h-[90dvh] overflow-y-auto ${adminTheme === "dark" ? "border-slate-800 bg-slate-900 text-slate-100" : "border-slate-200 bg-white text-slate-900"}`}>
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+              <h2 className="text-base sm:text-lg font-bold flex items-center gap-2">
+                <ShoppingBag className="h-5 w-5 text-emerald-500" /> Upload Piece of Clothing
+              </h2>
+              <button
+                type="button"
+                onClick={() => setIsStoreModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg transition cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateStoreProduct} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Item Title / Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. SMU Pump Cover Heavyweight T-Shirt"
+                  value={storeForm.name}
+                  onChange={(e) => setStoreForm({ ...storeForm, name: e.target.value })}
+                  className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2 text-xs focus:border-emerald-500 focus:outline-none text-slate-100"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Price in ZAR (Rands) *</label>
+                  <input
+                    type="number"
+                    required
+                    placeholder="e.g. 249"
+                    value={storeForm.price_zar}
+                    onChange={(e) => setStoreForm({ ...storeForm, price_zar: e.target.value })}
+                    className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2 text-xs focus:border-emerald-500 focus:outline-none text-slate-100 font-mono font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Category *</label>
+                  <select
+                    value={storeForm.category}
+                    onChange={(e) => setStoreForm({ ...storeForm, category: e.target.value })}
+                    className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs focus:border-emerald-500 focus:outline-none text-slate-100"
+                  >
+                    <option value="Gym T-Shirts & Tanks">Gym T-Shirts &amp; Tanks</option>
+                    <option value="Hoodies & Sweatshirts">Hoodies &amp; Sweatshirts</option>
+                    <option value="Gym Shorts & Bottoms">Gym Shorts &amp; Bottoms</option>
+                    <option value="Lifting Accessories & Straps">Lifting Accessories &amp; Straps</option>
+                    <option value="Tracksuits & Warmups">Tracksuits &amp; Warmups</option>
+                    <option value="Other">Other (Add Custom)</option>
+                  </select>
+                </div>
+              </div>
+
+              {storeForm.category === "Other" && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Custom Category Name *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Compression Gear, Headwear, Socks"
+                    value={customCategory}
+                    onChange={(e) => setCustomCategory(e.target.value)}
+                    className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2 text-xs focus:border-emerald-500 focus:outline-none text-slate-100"
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Sizes (Comma-separated) *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. S, M, L, XL, 2XL"
+                    value={storeForm.sizes}
+                    onChange={(e) => setStoreForm({ ...storeForm, sizes: e.target.value })}
+                    className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2 text-xs focus:border-emerald-500 focus:outline-none text-slate-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Available Colours *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Black, White, Forest Green"
+                    value={storeForm.colors}
+                    onChange={(e) => setStoreForm({ ...storeForm, colors: e.target.value })}
+                    className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2 text-xs focus:border-emerald-500 focus:outline-none text-slate-100"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Image URL (High Quality) *</label>
+                <input
+                  type="url"
+                  required
+                  placeholder="https://images.unsplash.com/... or uploaded image URL"
+                  value={storeForm.image_url}
+                  onChange={(e) => setStoreForm({ ...storeForm, image_url: e.target.value })}
+                  className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2 text-xs focus:border-emerald-500 focus:outline-none text-slate-100"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Student Designer Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Kagiso M."
+                    value={storeForm.designer}
+                    onChange={(e) => setStoreForm({ ...storeForm, designer: e.target.value })}
+                    className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2 text-xs focus:border-emerald-500 focus:outline-none text-slate-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Badge Tag</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Student Bestseller, Limited Drop"
+                    value={storeForm.tag}
+                    onChange={(e) => setStoreForm({ ...storeForm, tag: e.target.value })}
+                    className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2 text-xs focus:border-emerald-500 focus:outline-none text-slate-100"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Description *</label>
+                <textarea
+                  rows={2}
+                  required
+                  placeholder="Describe material (e.g. 100% 240gsm cotton), fit, and washing instructions..."
+                  value={storeForm.description}
+                  onChange={(e) => setStoreForm({ ...storeForm, description: e.target.value })}
+                  className="w-full rounded-xl border border-slate-800 bg-slate-950 p-2.5 text-xs focus:border-emerald-500 focus:outline-none text-slate-100"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsStoreModalOpen(false)}
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex items-center gap-1.5 rounded-xl bg-emerald-500 px-4 py-2 text-xs font-bold text-white shadow transition hover:bg-emerald-600 disabled:opacity-50 cursor-pointer"
+                >
+                  {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShoppingBag className="h-3.5 w-3.5" />}
+                  Publish to Store
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* CREATE / EDIT CHAT GROUP MODAL */}
       {isGroupModalOpen && (

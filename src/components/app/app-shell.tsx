@@ -71,7 +71,7 @@ export function AppShell({ children }: AppShellProps) {
     },
     {
       to: "/app/coach",
-      label: "AI Coach",
+      label: "NutriFit Guide",
       icon: Sparkles,
       exact: false,
       isPro: sub.isExpired,
