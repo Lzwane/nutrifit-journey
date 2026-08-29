@@ -156,11 +156,11 @@ function NutritionPage() {
     const file = e.target.files?.[0];
     if (!file || !user) return;
 
-    const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
-    const workspaceId = import.meta.env.VITE_ANTHROPIC_WORKSPACE_ID;
+    const apiKey = import.meta.env.ANTHROPIC_API_KEY;
+    const workspaceId = import.meta.env.ANTHROPIC_WORKSPACE_ID;
 
     if (!apiKey) {
-      alert("VITE_ANTHROPIC_API_KEY is missing in your .env file.");
+      alert("ANTHROPIC_API_KEY is missing in your .env file.");
       return;
     }
 

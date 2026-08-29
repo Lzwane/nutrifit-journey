@@ -209,11 +209,11 @@ function AICoachPage() {
   }, [hasAccess]);
 
   const callClaudeDirect = async (prompt: string, signal?: AbortSignal): Promise<string> => {
-    const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
-    const workspaceId = import.meta.env.VITE_ANTHROPIC_WORKSPACE_ID;
+    const apiKey = import.meta.env.ANTHROPIC_API_KEY;
+    const workspaceId = import.meta.env.ANTHROPIC_WORKSPACE_ID;
 
     if (!apiKey) {
-      throw new Error("Missing VITE_ANTHROPIC_API_KEY in your .env file.");
+      throw new Error("Missing ANTHROPIC_API_KEY in your .env file.");
     }
 
     const headers: Record<string, string> = {
