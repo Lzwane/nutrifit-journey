@@ -71,6 +71,14 @@ function getDailyIndex(dateStr: string, totalItems: number): number {
   return Math.abs(hash) % totalItems;
 }
 
+function getLocalTodayDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function HomePage() {
   const { user } = useAuth();
   const sub = useSubscription();
@@ -91,7 +99,7 @@ function HomePage() {
   const [todayFat, setTodayFat] = useState(0);
   const [todayWaterMl, setTodayWaterMl] = useState(0);
   const [todayWorkouts, setTodayWorkouts] = useState(0);
-  const [todaySteps, setTodaySteps] = useState(3420);
+  const [todaySteps, setTodaySteps] = useState(0);
 
   const [bannerState, setBannerState] = useState<"visible" | "exiting" | "hidden">("hidden");
 
@@ -118,7 +126,7 @@ function HomePage() {
 
   useEffect(() => {
     if (!user) return;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getLocalTodayDate();
 
     (async () => {
       const [
@@ -128,6 +136,7 @@ function HomePage() {
         { data: foods },
         { data: waters },
         { data: sessions },
+        { data: stepLog },
       ] = await Promise.all([
         supabase
           .from("profiles")
@@ -150,6 +159,12 @@ function HomePage() {
           .eq("user_id", user.id)
           .gte("started_at", today + "T00:00:00")
           .not("completed_at", "is", null),
+        supabase
+          .from("daily_step_logs")
+          .select("step_count")
+          .eq("user_id", user.id)
+          .eq("log_date", today)
+          .maybeSingle(),
       ]);
 
       setProfile(p as Profile | null);
@@ -170,7 +185,26 @@ function HomePage() {
 
       setTodayWaterMl((waters ?? []).reduce((sum, r: any) => sum + (r.amount_ml ?? 0), 0));
       setTodayWorkouts((sessions ?? []).length);
+      setTodaySteps(stepLog?.step_count ?? 0);
     })();
+
+    const checkMidnightInterval = setInterval(() => {
+      const now = new Date();
+      if (now.getHours() === 0 && now.getMinutes() === 0 && now.getSeconds() < 10) {
+        const newDay = getLocalTodayDate();
+        supabase
+          .from("daily_step_logs")
+          .select("step_count")
+          .eq("user_id", user.id)
+          .eq("log_date", newDay)
+          .maybeSingle()
+          .then(({ data }) => {
+            setTodaySteps(data?.step_count ?? 0);
+          });
+      }
+    }, 10000);
+
+    return () => clearInterval(checkMidnightInterval);
   }, [user]);
 
   const rawName =
@@ -529,7 +563,7 @@ function MacroBar({
 
       <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
         <div
-          className={`h-full ${barColor} rounded-full transition-all duration-500`}
+          className="h-full ${barColor} rounded-full transition-all duration-500"
           style={{ width: `${pct}%` }}
         />
       </div>
