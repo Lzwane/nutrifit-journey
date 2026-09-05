@@ -92,14 +92,14 @@ function HomePage() {
   const [quote, setQuote] = useState<{ text: string; author: string | null } | null>(null);
   const [tip, setTip] = useState<string | null>(null);
 
-  // Nutrition Log Totals State
+  // Nutrition & Activity Log Totals State
   const [todayCalories, setTodayCalories] = useState(0);
   const [todayProtein, setTodayProtein] = useState(0);
   const [todayCarbs, setTodayCarbs] = useState(0);
   const [todayFat, setTodayFat] = useState(0);
   const [todayWaterMl, setTodayWaterMl] = useState(0);
   const [todayWorkouts, setTodayWorkouts] = useState(0);
-  const [todaySteps, setTodaySteps] = useState(0);
+  const [activeStreak, setActiveStreak] = useState(1);
 
   const [bannerState, setBannerState] = useState<"visible" | "exiting" | "hidden">("hidden");
 
@@ -136,7 +136,6 @@ function HomePage() {
         { data: foods },
         { data: waters },
         { data: sessions },
-        { data: stepLog },
       ] = await Promise.all([
         supabase
           .from("profiles")
@@ -159,15 +158,18 @@ function HomePage() {
           .eq("user_id", user.id)
           .gte("started_at", today + "T00:00:00")
           .not("completed_at", "is", null),
-        supabase
-          .from("daily_step_logs")
-          .select("step_count")
-          .eq("user_id", user.id)
-          .eq("log_date", today)
-          .maybeSingle(),
       ]);
 
       setProfile(p as Profile | null);
+
+      // Ensure streak starts at 1 minimum for registered active users
+      const rawStreak = p?.streak_count ?? 0;
+      const resolvedStreak = Math.max(1, rawStreak);
+      setActiveStreak(resolvedStreak);
+
+      if (rawStreak < 1) {
+        supabase.from("profiles").update({ streak_count: 1 }).eq("id", user.id);
+      }
 
       if (q?.length) {
         setQuote(q[getDailyIndex(today, q.length)]);
@@ -185,22 +187,18 @@ function HomePage() {
 
       setTodayWaterMl((waters ?? []).reduce((sum, r: any) => sum + (r.amount_ml ?? 0), 0));
       setTodayWorkouts((sessions ?? []).length);
-      setTodaySteps(stepLog?.step_count ?? 0);
     })();
 
+    // Midnight Auto-reset (00:00 to 23:59 reset)
     const checkMidnightInterval = setInterval(() => {
       const now = new Date();
-      if (now.getHours() === 0 && now.getMinutes() === 0 && now.getSeconds() < 10) {
-        const newDay = getLocalTodayDate();
-        supabase
-          .from("daily_step_logs")
-          .select("step_count")
-          .eq("user_id", user.id)
-          .eq("log_date", newDay)
-          .maybeSingle()
-          .then(({ data }) => {
-            setTodaySteps(data?.step_count ?? 0);
-          });
+      if (now.getHours() === 0 && now.getMinutes() === 0 && now.getSeconds() < 12) {
+        setTodayCalories(0);
+        setTodayProtein(0);
+        setTodayCarbs(0);
+        setTodayFat(0);
+        setTodayWaterMl(0);
+        setTodayWorkouts(0);
       }
     }, 10000);
 
@@ -223,7 +221,10 @@ function HomePage() {
   const proteinGoal = Math.round((calGoal * 0.3) / 4);
   const carbsGoal = Math.round((calGoal * 0.45) / 4);
   const fatGoal = Math.round((calGoal * 0.25) / 9);
-  const stepsGoal = 5000;
+
+  const waterGoalL = profile?.daily_water_goal_l ?? 2.5;
+  const waterGoalMl = Math.round(waterGoalL * 1000);
+  const todayWaterL = (todayWaterMl / 1000).toFixed(2);
 
   const lost =
     profile?.starting_weight_kg && profile?.current_weight_kg
@@ -329,10 +330,10 @@ function HomePage() {
             </Link>
           )}
 
-          {/* STREAK BADGE */}
+          {/* DYNAMIC STREAK BADGE (STARTS AT 1) */}
           <div className="flex items-center gap-1.5 rounded-2xl border border-orange-500/30 bg-orange-500/10 px-3.5 py-2 text-xs font-extrabold text-orange-600 dark:text-orange-400 shadow-sm shrink-0">
             <FireIcon className="h-4 w-4 shrink-0 fill-orange-500 text-orange-500" />
-            <span>{profile?.streak_count ?? 0} Day Streak</span>
+            <span>{activeStreak} Day Streak</span>
           </div>
         </div>
       </div>
@@ -393,16 +394,16 @@ function HomePage() {
           </div>
         </div>
 
-        {/* 4-COLUMN BREAKDOWN BARS WITH 5,000 STEP GOAL REPLACING FAT CARD */}
+        {/* 4-COLUMN BREAKDOWN BARS: HYDRATION REPLACING STEPS */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 pt-1">
-          {/* 1. STEPS (GOAL 5,000) */}
+          {/* 1. HYDRATION (WATER INTAKE) */}
           <MacroBar
-            label="Steps (Goal 5k)"
-            current={`${todaySteps.toLocaleString()}`}
-            target={`${stepsGoal.toLocaleString()}`}
-            progress={todaySteps / stepsGoal}
-            barColor="bg-emerald-500"
-            badgeColor="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+            label="Hydration"
+            current={`${todayWaterL} L`}
+            target={`${waterGoalL} L`}
+            progress={todayWaterMl / Math.max(waterGoalMl, 1)}
+            barColor="bg-blue-500"
+            badgeColor="bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
           />
 
           {/* 2. PROTEIN */}
@@ -437,9 +438,9 @@ function HomePage() {
         </div>
       </section>
 
-      {/* QUICK ACTIONS GRID: RUNNING TRACKER REPLACES START WORKOUT */}
+      {/* QUICK ACTIONS GRID */}
       <div className="grid grid-cols-2 gap-3.5 md:grid-cols-4">
-        {/* FREE FOREVER: OUTDOOR RUNNING */}
+        {/* OUTDOOR RUNNING */}
         <QuickAction
           to="/app/running"
           icon={Footprints}
@@ -447,7 +448,7 @@ function HomePage() {
           colorClass="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
         />
 
-        {/* FREE FOREVER: LOG WEIGHT */}
+        {/* LOG WEIGHT */}
         <QuickAction
           to="/app/profile"
           icon={TrendingUp}
@@ -455,7 +456,7 @@ function HomePage() {
           colorClass="bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20"
         />
 
-        {/* FREE FOREVER: LOG WATER & MEALS */}
+        {/* LOG WATER & MEALS */}
         <QuickAction
           to="/app/nutrition"
           icon={Droplet}
@@ -463,7 +464,7 @@ function HomePage() {
           colorClass="bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20"
         />
 
-        {/* PREMIUM ONLY: ASK AI COACH */}
+        {/* ASK AI COACH */}
         <QuickAction
           to={hasAccess ? "/app/coach" : "/app/profile"}
           search={hasAccess ? undefined : { subscribe: "true" }}
@@ -563,7 +564,7 @@ function MacroBar({
 
       <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
         <div
-          className="h-full ${barColor} rounded-full transition-all duration-500"
+          className={`h-full ${barColor} rounded-full transition-all duration-500`}
           style={{ width: `${pct}%` }}
         />
       </div>
