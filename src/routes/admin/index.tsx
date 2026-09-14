@@ -43,11 +43,12 @@ export const Route = createFileRoute("/admin/")({
   component: AdminDashboardPage,
 });
 
-// KNOWN ADMIN IDS & EMAILS TO COMPLETELY EXCLUDE FROM APP METRICS & SUBSCRIBER LISTS
+// KNOWN ADMIN IDS & EMAILS TO ACCESS ADMIN & BE EXCLUDED FROM APP USER METRICS
 const ADMIN_EMAILS = [
   "officialnutrifit01@gmail.com",
   "admin@nutrifit.co.za",
   "admin@nutrifit-app.co.za",
+  "thobejanetheo803@gmail.com",
 ];
 
 const ADMIN_EXCLUDE_IDS = [
@@ -538,7 +539,7 @@ function AdminDashboardPage() {
         tag: storeForm.tag.trim() || "Official Drop",
       };
 
-      const { data, error } = await supabase.from("store_products").insert([payload]).select();
+      const { error } = await supabase.from("store_products").insert([payload]).select();
 
       if (error) {
         if (error.message?.includes("images")) {
@@ -575,7 +576,6 @@ function AdminDashboardPage() {
     }
   };
 
-  // OPEN APPS BEAUTIFUL CUSTOM DELETE MODAL
   const promptAppDelete = (
     type: "recipe" | "product" | "group" | "member",
     id: string,
@@ -591,7 +591,6 @@ function AdminDashboardPage() {
     });
   };
 
-  // EXECUTE CONFIRMED DELETE ACTION
   const executeAppDelete = async () => {
     if (!deleteModal.id || !deleteModal.type) return;
     setDeletingLoading(true);
@@ -1031,7 +1030,7 @@ function AdminDashboardPage() {
                   {metricsLoading ? <Loader2 className="h-6 w-6 animate-spin text-slate-500" /> : totalUsersCount}
                 </div>
                 <span className="text-[10px] font-semibold text-slate-400 mt-1 block">
-                  Excludes Admin Account
+                  Excludes Admin Accounts
                 </span>
               </div>
 
