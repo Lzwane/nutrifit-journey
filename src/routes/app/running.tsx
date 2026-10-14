@@ -804,7 +804,7 @@ function RunningTrackerPage() {
       {activeTab === "hub" ? (
         <div className="space-y-6">
           {/* MAIN START RUN ACTION HERO (RESPONSIVE) */}
-          <div className="rounded-3xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/15 via-card to-card p-5 sm:p-8 shadow-sm relative overflow-hidden">
+          <div className="rounded-3xl border border-emerald-500/30 bg-linear-to-br from-emerald-500/15 via-card to-card p-5 sm:p-8 shadow-sm relative overflow-hidden">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 relative z-10">
               <div className="space-y-2 max-w-lg">
                 <span className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider inline-block">
