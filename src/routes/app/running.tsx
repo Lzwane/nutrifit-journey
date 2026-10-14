@@ -23,8 +23,8 @@ import {
   ChevronRight,
   Target,
   Sparkles,
-  ArrowLeft,
-  Settings2,
+  Compass,
+  Navigation2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
@@ -33,7 +33,7 @@ export const Route = createFileRoute("/app/running")({
   head: () => ({
     meta: [
       { title: "Outdoor GPS Running — NutriFit" },
-      { name: "description", content: "Outdoor GPS running tracker with voice coach, personal bests, and daily notifications." },
+      { name: "description", content: "High-precision outdoor GPS tracker with auto-pause, directional compass, and live voice splits." },
     ],
   }),
   component: RunningTrackerPage,
@@ -43,6 +43,8 @@ interface Coordinate {
   lat: number;
   lng: number;
   speed: number;
+  heading: number | null;
+  accuracy: number;
   timestamp: number;
 }
 
@@ -71,8 +73,9 @@ interface PersonalBests {
   totalRunsCount: number;
 }
 
+// Precise Geodesic distance calculation
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371e3;
+  const R = 6371008.8; // Mean Earth radius in meters
   const phi1 = (lat1 * Math.PI) / 180;
   const phi2 = (lat2 * Math.PI) / 180;
   const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
@@ -96,18 +99,35 @@ function formatTime(seconds: number): string {
   return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
 }
 
+function speedToPaceString(speedKmh: number): string {
+  if (speedKmh < 1.8) return "--'--\"";
+  const paceSecondsPerKm = 3600 / speedKmh;
+  const m = Math.floor(paceSecondsPerKm / 60);
+  const s = Math.round(paceSecondsPerKm % 60);
+  if (m > 25) return "--'--\"";
+  return `${m}'${s.toString().padStart(2, "0")}"`;
+}
+
 function speakVoice(text: string) {
-  if (!("speechSynthesis" in window)) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = 1.05;
-  utterance.pitch = 1.0;
-  const voices = window.speechSynthesis.getVoices();
-  const natural = voices.find(
-    (v) => v.lang.startsWith("en") && (v.name.includes("Natural") || v.name.includes("Google") || v.name.includes("Samantha"))
-  );
-  if (natural) utterance.voice = natural;
-  window.speechSynthesis.speak(utterance);
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  try {
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.resume();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1.05;
+    utterance.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const natural = voices.find(
+      (v) =>
+        v.lang.startsWith("en") &&
+        (v.name.includes("Natural") ||
+          v.name.includes("Google") ||
+          v.name.includes("Samantha") ||
+          v.name.includes("Siri"))
+    );
+    if (natural) utterance.voice = natural;
+    window.speechSynthesis.speak(utterance);
+  } catch (_) {}
 }
 
 function RunningTrackerPage() {
@@ -116,17 +136,23 @@ function RunningTrackerPage() {
   const [activeTab, setActiveTab] = useState<"hub" | "history">("hub");
 
   // Running Flow States
-  const [sessionStage, setSessionStage] = useState<"idle" | "goal-select" | "warmup" | "countdown" | "running" | "paused">("idle");
+  const [sessionStage, setSessionStage] = useState<
+    "idle" | "goal-select" | "warmup" | "countdown" | "running" | "paused"
+  >("idle");
   const [targetGoalKm, setTargetGoalKm] = useState<number | null>(5);
   const [countdownNum, setCountdownNum] = useState(3);
-  const [warmupSecondsLeft, setWarmupSecondsLeft] = useState(600); // 10 mins
+  const [warmupSecondsLeft, setWarmupSecondsLeft] = useState(600);
 
-  // Run Metrics
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  // High Precision Metrics
+  const [activeMovingSeconds, setActiveMovingSeconds] = useState(0);
   const [distanceMeters, setDistanceMeters] = useState(0);
   const [stepsCount, setStepsCount] = useState(0);
   const [currentSpeedKmh, setCurrentSpeedKmh] = useState(0);
-  const [currentPace, setCurrentPace] = useState("0'00\"");
+  const [currentPace, setCurrentPace] = useState("--'--\"");
+  const [avgPace, setAvgPace] = useState("0'00\"");
+  const [isAutoPaused, setIsAutoPaused] = useState(false);
+  const [deviceHeading, setDeviceHeading] = useState<number>(0);
+
   const [coordinates, setCoordinates] = useState<Coordinate[]>([]);
   const [completedSummary, setCompletedSummary] = useState<RunSummary | null>(null);
   const [voiceMuted, setVoiceMuted] = useState(false);
@@ -138,7 +164,7 @@ function RunningTrackerPage() {
   });
   const [showReminderModal, setShowReminderModal] = useState(false);
 
-  // History & Personal Bests
+  // History & Bests
   const [historyRuns, setHistoryRuns] = useState<RunSummary[]>(() => {
     const saved = localStorage.getItem("nutrifit_running_history");
     return saved ? JSON.parse(saved) : [];
@@ -155,7 +181,8 @@ function RunningTrackerPage() {
   const watchIdRef = useRef<number | null>(null);
   const runTimerRef = useRef<any>(null);
   const warmupTimerRef = useRef<any>(null);
-  const lastCoordRef = useRef<Coordinate | null>(null);
+  const lastFilteredCoordRef = useRef<Coordinate | null>(null);
+  const recentSpeedsRef = useRef<number[]>([]);
   const lastSpokenKmRef = useRef<number>(0);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const leafletMapRef = useRef<any>(null);
@@ -175,7 +202,8 @@ function RunningTrackerPage() {
       totalDist += r.distanceKm;
       if (r.distanceKm > longest) longest = r.distanceKm;
 
-      const [m, s] = r.avgPace.replace('"', '').split("'").map(Number);
+      const cleanPace = r.avgPace.replace('"', "");
+      const [m, s] = cleanPace.split("'").map(Number);
       const paceSecs = (m || 0) * 60 + (s || 0);
       if (paceSecs > 0 && paceSecs < fastestPaceSecs) {
         fastestPaceSecs = paceSecs;
@@ -198,7 +226,7 @@ function RunningTrackerPage() {
     });
   }, [historyRuns]);
 
-  // Load Leaflet Scripts
+  // Load Leaflet Styles & Scripts
   useEffect(() => {
     if (!document.getElementById("leaflet-css")) {
       const link = document.createElement("link");
@@ -217,7 +245,29 @@ function RunningTrackerPage() {
     }
   }, []);
 
-  // Initialize Zoomed Leaflet Map when Run Stage starts
+  // Hardware Compass & Phone Orientation Handler
+  useEffect(() => {
+    const handleOrientation = (e: DeviceOrientationEvent) => {
+      const heading = (e as any).webkitCompassHeading ?? (e.alpha ? 360 - e.alpha : null);
+      if (heading !== null && heading !== undefined) {
+        setDeviceHeading(Math.round(heading));
+      }
+    };
+
+    if (sessionStage === "running" || sessionStage === "paused") {
+      if (typeof window !== "undefined" && window.DeviceOrientationEvent) {
+        window.addEventListener("deviceorientation", handleOrientation, true);
+      }
+    }
+
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("deviceorientation", handleOrientation);
+      }
+    };
+  }, [sessionStage]);
+
+  // Leaflet Map Initialization
   useEffect(() => {
     if (sessionStage !== "running" && sessionStage !== "paused") return;
 
@@ -226,18 +276,25 @@ function RunningTrackerPage() {
       if (!L || !mapContainerRef.current) return;
 
       if (!leafletMapRef.current) {
-        const defaultCenter = coordinates.length > 0
-          ? [coordinates[coordinates.length - 1].lat, coordinates[coordinates.length - 1].lng]
-          : [-25.62, 28.02];
+        const defaultCenter =
+          coordinates.length > 0
+            ? [coordinates[coordinates.length - 1].lat, coordinates[coordinates.length - 1].lng]
+            : [-25.746, 28.188];
 
         const mapInstance = L.map(mapContainerRef.current, {
           zoomControl: false,
           attributionControl: false,
+          fadeAnimation: true,
         }).setView(defaultCenter, 18);
 
-        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-          maxZoom: 19,
-        }).addTo(mapInstance);
+        // CartoDB Voyager High-Contrast Runner Tiles
+        L.tileLayer(
+          "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+          {
+            maxZoom: 20,
+            subdomains: "abcd",
+          }
+        ).addTo(mapInstance);
 
         const group = L.layerGroup().addTo(mapInstance);
         polylineLayerGroupRef.current = group;
@@ -249,7 +306,7 @@ function RunningTrackerPage() {
     return () => clearTimeout(timer);
   }, [sessionStage]);
 
-  // Update Traversed Polyline and Marker with Pulse
+  // Dynamic Trajectory and Directional Compass Marker
   useEffect(() => {
     if (!leafletMapRef.current || !(window as any).L || coordinates.length === 0) return;
     const L = (window as any).L;
@@ -257,24 +314,35 @@ function RunningTrackerPage() {
     const group = polylineLayerGroupRef.current;
     const latest = coordinates[coordinates.length - 1];
 
+    const currentBearing = latest.heading ?? deviceHeading;
+
+    const directionalIcon = L.divIcon({
+      className: "custom-runner-compass",
+      html: `
+        <div style="position:relative;width:40px;height:40px;display:flex;align-items:center;justify-content:center;">
+          <div style="position:absolute;top:0;width:0;height:0;border-left:14px solid transparent;border-right:14px solid transparent;border-bottom:28px solid rgba(16,185,129,0.35);transform:translateY(-8px) rotate(${currentBearing}deg);transform-origin:bottom center;"></div>
+          <div style="background-color:#10b981;width:18px;height:18px;border-radius:50%;border:3px solid #ffffff;box-shadow:0 0 12px #10b981;z-index:10;"></div>
+        </div>
+      `,
+      iconSize: [40, 40],
+      iconAnchor: [20, 20],
+    });
+
     if (!userMarkerRef.current) {
-      const pulseIcon = L.divIcon({
-        className: "custom-pulse-marker",
-        html: `<div style="background-color:#10b981;width:18px;height:18px;border-radius:50%;border:3px solid white;box-shadow:0 0 15px #10b981;"></div>`,
-        iconSize: [18, 18],
-        iconAnchor: [9, 9],
-      });
-      userMarkerRef.current = L.marker([latest.lat, latest.lng], { icon: pulseIcon }).addTo(map);
+      userMarkerRef.current = L.marker([latest.lat, latest.lng], { icon: directionalIcon }).addTo(map);
     } else {
       userMarkerRef.current.setLatLng([latest.lat, latest.lng]);
+      userMarkerRef.current.setIcon(directionalIcon);
     }
 
-    map.setView([latest.lat, latest.lng], 18, { animate: true });
+    map.panTo([latest.lat, latest.lng], { animate: true, duration: 0.6 });
 
+    // Speed-based polyline segment styling
     if (coordinates.length >= 2 && group) {
       const p1 = coordinates[coordinates.length - 2];
       const p2 = coordinates[coordinates.length - 1];
-      const speedColor = p2.speed < 6 ? "#3b82f6" : p2.speed < 12 ? "#10b981" : "#f97316";
+      const speedColor =
+        p2.speed < 6.5 ? "#3b82f6" : p2.speed < 12.5 ? "#10b981" : "#f97316";
 
       L.polyline(
         [
@@ -283,16 +351,16 @@ function RunningTrackerPage() {
         ],
         {
           color: speedColor,
-          weight: 7,
-          opacity: 0.9,
+          weight: 6,
+          opacity: 0.95,
           lineCap: "round",
           lineJoin: "round",
         }
       ).addTo(group);
     }
-  }, [coordinates]);
+  }, [coordinates, deviceHeading]);
 
-  // Warmup Countdown Timer
+  // Warmup Countdown
   useEffect(() => {
     if (sessionStage === "warmup") {
       warmupTimerRef.current = setInterval(() => {
@@ -303,7 +371,7 @@ function RunningTrackerPage() {
             return 0;
           }
           if (prev === 300 && !voiceMuted) {
-            speakVoice("Five minutes of warmup remaining. Prepare for your run.");
+            speakVoice("Five minutes of warmup remaining. Prepare your pace.");
           }
           return prev - 1;
         });
@@ -314,19 +382,19 @@ function RunningTrackerPage() {
     return () => clearInterval(warmupTimerRef.current);
   }, [sessionStage, voiceMuted]);
 
-  // Run Timer
+  // Moving Timer (Auto-pauses when stopped)
   useEffect(() => {
-    if (sessionStage === "running") {
+    if (sessionStage === "running" && !isAutoPaused) {
       runTimerRef.current = setInterval(() => {
-        setElapsedSeconds((prev) => prev + 1);
+        setActiveMovingSeconds((prev) => prev + 1);
       }, 1000);
     } else {
       clearInterval(runTimerRef.current);
     }
     return () => clearInterval(runTimerRef.current);
-  }, [sessionStage]);
+  }, [sessionStage, isAutoPaused]);
 
-  // GPS Tracking & Kilometer Voice Announcements
+  // High-Precision GPS Engine with Auto-Pause & Noise Filter
   useEffect(() => {
     if (sessionStage === "running") {
       if (!("geolocation" in navigator)) {
@@ -336,69 +404,98 @@ function RunningTrackerPage() {
 
       watchIdRef.current = navigator.geolocation.watchPosition(
         (position) => {
-          const { latitude, longitude, speed, accuracy } = position.coords;
-          if (accuracy > 35) return;
+          const { latitude, longitude, speed, accuracy, heading } = position.coords;
 
-          const rawSpeed = speed !== null && speed >= 0 ? speed * 3.6 : 0;
-          setCurrentSpeedKmh(Math.round(rawSpeed * 10) / 10);
+          // Reject inaccurate GPS readings
+          if (accuracy > 25) return;
+
+          const rawSpeedKmh = speed !== null && speed >= 0 ? speed * 3.6 : 0;
+
+          // Auto-pause if runner stopped (speed < 2.0 km/h)
+          if (rawSpeedKmh < 2.0) {
+            setIsAutoPaused(true);
+            setCurrentSpeedKmh(0);
+            setCurrentPace("--'--\"");
+            return;
+          }
+
+          setIsAutoPaused(false);
+          setCurrentSpeedKmh(Math.round(rawSpeedKmh * 10) / 10);
+
+          // Rolling window for accurate real-time pace
+          recentSpeedsRef.current.push(rawSpeedKmh);
+          if (recentSpeedsRef.current.length > 5) recentSpeedsRef.current.shift();
+          const smoothSpeed =
+            recentSpeedsRef.current.reduce((a, b) => a + b, 0) /
+            recentSpeedsRef.current.length;
+          setCurrentPace(speedToPaceString(smoothSpeed));
 
           const newCoord: Coordinate = {
             lat: latitude,
             lng: longitude,
-            speed: rawSpeed,
+            speed: rawSpeedKmh,
+            heading: heading !== null && !isNaN(heading) ? heading : null,
+            accuracy,
             timestamp: position.timestamp,
           };
 
-          if (lastCoordRef.current) {
-            const deltaDist = calculateDistance(
-              lastCoordRef.current.lat,
-              lastCoordRef.current.lng,
+          if (lastFilteredCoordRef.current) {
+            const deltaMeters = calculateDistance(
+              lastFilteredCoordRef.current.lat,
+              lastFilteredCoordRef.current.lng,
               newCoord.lat,
               newCoord.lng
             );
 
-            if (deltaDist > 1.5) {
-              setDistanceMeters((prev) => {
-                const total = prev + deltaDist;
-                setStepsCount(Math.round(total * 1.31));
+            const timeDeltaSec = (newCoord.timestamp - lastFilteredCoordRef.current.timestamp) / 1000;
+            const computedSpeed = timeDeltaSec > 0 ? (deltaMeters / timeDeltaSec) * 3.6 : 0;
 
-                const currentKm = total / 1000;
+            // Reject static GPS bounce & impossible jumps
+            if (deltaMeters >= 1.8 && computedSpeed < 45) {
+              setDistanceMeters((prev) => {
+                const totalM = prev + deltaMeters;
+                setStepsCount(Math.round(totalM * 1.32));
+
+                const currentKm = totalM / 1000;
                 const roundedKm = Math.floor(currentKm);
 
-                // Voice Announcements on every full Kilometer
+                // Voice notification on each completed kilometer
                 if (roundedKm > lastSpokenKmRef.current && roundedKm > 0) {
                   lastSpokenKmRef.current = roundedKm;
                   if (!voiceMuted) {
-                    const paceSecs = elapsedSeconds / currentKm;
-                    const pM = Math.floor(paceSecs / 60);
-                    const pS = Math.round(paceSecs % 60);
+                    const avgSecsPerKm = activeMovingSeconds / currentKm;
+                    const pM = Math.floor(avgSecsPerKm / 60);
+                    const pS = Math.round(avgSecsPerKm % 60);
                     speakVoice(
-                      `Kilometer ${roundedKm} complete. Average pace: ${pM} minutes ${pS} seconds per kilometer.`
+                      `Kilometer ${roundedKm} complete. Average pace ${pM} minutes and ${pS} seconds per kilometer.`
                     );
 
                     if (targetGoalKm && roundedKm >= targetGoalKm) {
-                      speakVoice(`Congratulations! You have reached your ${targetGoalKm} kilometer target goal!`);
+                      speakVoice(`Target reached! Fantastic job completing ${targetGoalKm} kilometers!`);
                     }
                   }
                 }
 
-                if (currentKm > 0.05 && elapsedSeconds > 0) {
-                  const paceSecs = elapsedSeconds / currentKm;
-                  const pM = Math.floor(paceSecs / 60);
-                  const pS = Math.round(paceSecs % 60);
-                  setCurrentPace(`${pM}'${pS.toString().padStart(2, "0")}"`);
+                if (currentKm > 0.05 && activeMovingSeconds > 0) {
+                  const avgPaceSecs = activeMovingSeconds / currentKm;
+                  const pM = Math.floor(avgPaceSecs / 60);
+                  const pS = Math.round(avgPaceSecs % 60);
+                  setAvgPace(`${pM}'${pS.toString().padStart(2, "0")}"`);
                 }
 
-                return total;
+                return totalM;
               });
-            }
-          }
 
-          lastCoordRef.current = newCoord;
-          setCoordinates((prev) => [...prev, newCoord]);
+              lastFilteredCoordRef.current = newCoord;
+              setCoordinates((prev) => [...prev, newCoord]);
+            }
+          } else {
+            lastFilteredCoordRef.current = newCoord;
+            setCoordinates([newCoord]);
+          }
         },
-        (err) => console.error("GPS Error:", err),
-        { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
+        (err) => console.warn("GPS status:", err),
+        { enableHighAccuracy: true, maximumAge: 500, timeout: 10000 }
       );
     } else {
       if (watchIdRef.current !== null) {
@@ -412,9 +509,8 @@ function RunningTrackerPage() {
         navigator.geolocation.clearWatch(watchIdRef.current);
       }
     };
-  }, [sessionStage, elapsedSeconds, voiceMuted, targetGoalKm]);
+  }, [sessionStage, activeMovingSeconds, voiceMuted, targetGoalKm]);
 
-  // Start Pre-Run Warmup Flow
   const handleInitiateRunFlow = () => {
     setSessionStage("goal-select");
   };
@@ -423,7 +519,7 @@ function RunningTrackerPage() {
     setSessionStage("warmup");
     setWarmupSecondsLeft(600);
     if (!voiceMuted) {
-      speakVoice("Starting ten minute dynamic warmup. Walk briskly and stretch your legs.");
+      speakVoice("Starting ten minute dynamic warmup. Walk briskly and warm up your joints.");
     }
   };
 
@@ -444,7 +540,7 @@ function RunningTrackerPage() {
         if (!voiceMuted) speakVoice("One");
       } else if (current <= 0) {
         clearInterval(interval);
-        if (!voiceMuted) speakVoice("Start Running!");
+        if (!voiceMuted) speakVoice("Workout started. Enjoy your run!");
         setSessionStage("running");
       }
     }, 1000);
@@ -457,7 +553,7 @@ function RunningTrackerPage() {
 
   const handleFinishAndSaveRun = async () => {
     const km = Math.round((distanceMeters / 1000) * 100) / 100;
-    const calories = Math.round(km * 65);
+    const calories = Math.round(km * 64);
     const maxSpeed = coordinates.reduce((max, c) => Math.max(max, c.speed), 0);
 
     let walkCount = 0;
@@ -465,8 +561,8 @@ function RunningTrackerPage() {
     let sprintCount = 0;
 
     coordinates.forEach((c) => {
-      if (c.speed < 6) walkCount++;
-      else if (c.speed < 12) jogCount++;
+      if (c.speed < 6.5) walkCount++;
+      else if (c.speed < 12.5) jogCount++;
       else sprintCount++;
     });
 
@@ -480,8 +576,8 @@ function RunningTrackerPage() {
     const summary: RunSummary = {
       id: Date.now().toString(),
       distanceKm: km,
-      durationSeconds: elapsedSeconds,
-      avgPace: currentPace === "0'00\"" ? "5'30\"" : currentPace,
+      durationSeconds: activeMovingSeconds,
+      avgPace: avgPace === "0'00\"" ? "5'30\"" : avgPace,
       maxSpeedKmh: Math.round(maxSpeed * 10) / 10,
       calories,
       steps: stepsCount,
@@ -502,7 +598,7 @@ function RunningTrackerPage() {
       await supabase.from("workout_sessions").insert({
         user_id: user.id,
         workout_id: "outdoor-running-session",
-        started_at: new Date(Date.now() - elapsedSeconds * 1000).toISOString(),
+        started_at: new Date(Date.now() - activeMovingSeconds * 1000).toISOString(),
         completed_at: new Date().toISOString(),
       } as any);
 
@@ -515,7 +611,7 @@ function RunningTrackerPage() {
     }
 
     if (!voiceMuted) {
-      speakVoice(`Run completed. You ran ${km} kilometers in ${Math.floor(elapsedSeconds / 60)} minutes. Great work!`);
+      speakVoice(`Run completed. You ran ${km} kilometers in ${Math.floor(activeMovingSeconds / 60)} minutes.`);
     }
 
     setCompletedSummary(summary);
@@ -524,13 +620,16 @@ function RunningTrackerPage() {
 
   const handleResetAll = () => {
     setSessionStage("idle");
-    setElapsedSeconds(0);
+    setActiveMovingSeconds(0);
     setDistanceMeters(0);
     setStepsCount(0);
     setCurrentSpeedKmh(0);
-    setCurrentPace("0'00\"");
+    setCurrentPace("--'--\"");
+    setAvgPace("0'00\"");
+    setIsAutoPaused(false);
     setCoordinates([]);
-    lastCoordRef.current = null;
+    lastFilteredCoordRef.current = null;
+    recentSpeedsRef.current = [];
     lastSpokenKmRef.current = 0;
     if (leafletMapRef.current) {
       leafletMapRef.current.remove();
@@ -549,33 +648,44 @@ function RunningTrackerPage() {
       setReminderEnabled(true);
       localStorage.setItem("nutrifit_run_reminder_enabled", "true");
       localStorage.setItem("nutrifit_run_reminder_time", reminderTime);
-      new Notification("🏃 Running Reminder Active!", {
-        body: `We will remind you daily at ${reminderTime} to get your miles in!`,
+      new Notification("🏃 Running Reminder Scheduled", {
+        body: `NutriFit will remind you daily at ${reminderTime} for your run!`,
       });
       setShowReminderModal(false);
     }
   };
 
   const currentDistKm = (distanceMeters / 1000).toFixed(2);
-  const goalProgressPct = targetGoalKm ? Math.min(100, Math.round(((distanceMeters / 1000) / targetGoalKm) * 100)) : 0;
+  const goalProgressPct = targetGoalKm
+    ? Math.min(100, Math.round(((distanceMeters / 1000) / targetGoalKm) * 100))
+    : 0;
 
   return (
     <div className="space-y-5 max-w-5xl mx-auto font-sans pb-16 w-full">
-      {/* 1. FULL-SCREEN RUNNING / WARMUP EXPERIENCE (NIKE RUN CLUB / STRAVA STYLE) */}
-      {(sessionStage === "warmup" || sessionStage === "countdown" || sessionStage === "running" || sessionStage === "paused") && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-between bg-slate-950 text-white animate-in fade-in">
-          {/* TOP OVERLAY CONTROLS */}
+      {/* 1. FULL-SCREEN RUNNING EXPERIENCE */}
+      {(sessionStage === "warmup" ||
+        sessionStage === "countdown" ||
+        sessionStage === "running" ||
+        sessionStage === "paused") && (
+        <div className="fixed inset-0 z-50 flex flex-col justify-between bg-slate-950 text-white animate-in fade-in select-none">
+          {/* TOP OVERLAY BAR */}
           <div className="flex items-center justify-between px-4 sm:px-6 py-3 z-30 pt-[max(1rem,env(safe-area-inset-top))]">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
+              <span
+                className={`h-2.5 w-2.5 rounded-full ${
+                  isAutoPaused ? "bg-amber-400" : "bg-emerald-500 animate-ping"
+                } shrink-0`}
+              />
               <span className="text-[11px] sm:text-xs font-black uppercase tracking-widest text-emerald-400 font-mono truncate">
                 {sessionStage === "warmup"
                   ? "WARM-UP PHASE"
                   : sessionStage === "countdown"
                   ? "GET READY"
+                  : isAutoPaused
+                  ? "AUTO-PAUSED (STOPPED)"
                   : sessionStage === "paused"
-                  ? "RUN PAUSED"
-                  : "GPS TRACKING ACTIVE"}
+                  ? "WORKOUT PAUSED"
+                  : "LIVE GPS TRACKING"}
               </span>
             </div>
 
@@ -600,12 +710,12 @@ function RunningTrackerPage() {
             </div>
           </div>
 
-          {/* WARMUP STAGE VIEW */}
+          {/* WARMUP STAGE */}
           {sessionStage === "warmup" && (
             <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-5 max-w-md mx-auto z-20">
-              <div className="relative flex h-44 w-44 sm:h-52 sm:w-52 items-center justify-center rounded-full bg-emerald-500/10 border-4 border-emerald-500 shadow-2xl shadow-emerald-500/20">
+              <div className="relative flex h-48 w-48 sm:h-56 sm:w-56 items-center justify-center rounded-full bg-emerald-500/10 border-4 border-emerald-500 shadow-2xl shadow-emerald-500/20">
                 <div className="space-y-1">
-                  <span className="text-3xl sm:text-5xl font-black font-mono tracking-tight text-white">
+                  <span className="text-4xl sm:text-5xl font-black font-mono tracking-tight text-white">
                     {formatTime(warmupSecondsLeft)}
                   </span>
                   <p className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-widest text-emerald-400">
@@ -614,10 +724,10 @@ function RunningTrackerPage() {
                 </div>
               </div>
 
-              <div className="space-y-1.5 px-2">
-                <h2 className="text-lg sm:text-xl font-extrabold">Dynamic Warm-up</h2>
+              <div className="space-y-1 px-2">
+                <h2 className="text-xl font-extrabold">Dynamic Warm-up</h2>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Start with a brisk walk, gentle leg swings, and ankle rolls to prep your muscles for high performance.
+                  Brisk walking, high knees, and leg swings to activate muscles and prevent injury.
                 </p>
               </div>
 
@@ -626,13 +736,13 @@ function RunningTrackerPage() {
                 onClick={handleSkipWarmup}
                 className="w-full cursor-pointer flex items-center justify-center gap-2 rounded-full bg-emerald-500 hover:bg-emerald-600 py-3.5 text-xs sm:text-sm font-extrabold text-white shadow-xl active:scale-95 transition"
               >
-                <span>Skip Warm-up &amp; Run</span>
+                <span>Skip Warm-up &amp; Start Run</span>
                 <SkipForward className="h-4 w-4 shrink-0" />
               </button>
             </div>
           )}
 
-          {/* COUNTDOWN 3-2-1 VIEW */}
+          {/* COUNTDOWN 3-2-1 */}
           {sessionStage === "countdown" && (
             <div className="flex-1 flex flex-col items-center justify-center text-center z-20">
               <div className="text-8xl sm:text-9xl font-black text-emerald-400 font-mono animate-bounce">
@@ -644,60 +754,74 @@ function RunningTrackerPage() {
             </div>
           )}
 
-          {/* ACTIVE RUNNING ZOOMED MAP & HUD VIEW */}
+          {/* ACTIVE RUNNING ZOOMED MAP & HUD */}
           {(sessionStage === "running" || sessionStage === "paused") && (
             <div className="flex-1 flex flex-col justify-between relative overflow-hidden">
-              {/* ZOOMED-IN TRAVERSED MAP */}
-              <div className="absolute inset-0 w-full h-full z-0 opacity-85">
+              <div className="absolute inset-0 w-full h-full z-0">
                 <div ref={mapContainerRef} className="w-full h-full" />
               </div>
 
-              {/* TARGET GOAL PROGRESS PILL */}
-              {targetGoalKm && (
-                <div className="relative z-20 self-center mt-2 rounded-full bg-slate-950/85 backdrop-blur-md border border-white/10 px-3.5 py-1.5 flex items-center gap-2.5 shadow-xl">
-                  <div className="flex items-center gap-1.5 text-[11px] sm:text-xs font-bold text-slate-300">
-                    <Target className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                    <span>Goal: {targetGoalKm} km</span>
+              {/* TARGET GOAL PILL & COMPASS HEADING */}
+              <div className="relative z-20 self-center mt-2 flex items-center gap-2">
+                {targetGoalKm && (
+                  <div className="rounded-full bg-slate-950/85 backdrop-blur-md border border-white/10 px-3.5 py-1.5 flex items-center gap-2.5 shadow-xl">
+                    <div className="flex items-center gap-1.5 text-[11px] sm:text-xs font-bold text-slate-300">
+                      <Target className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                      <span>Target: {targetGoalKm} km</span>
+                    </div>
+                    <div className="w-16 sm:w-20 h-1.5 rounded-full bg-white/20 overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-500 transition-all duration-500"
+                        style={{ width: `${goalProgressPct}%` }}
+                      />
+                    </div>
+                    <span className="text-[11px] sm:text-xs font-mono font-bold text-emerald-400">
+                      {goalProgressPct}%
+                    </span>
                   </div>
-                  <div className="w-16 sm:w-20 h-1.5 rounded-full bg-white/20 overflow-hidden">
-                    <div
-                      className="h-full bg-emerald-500 transition-all duration-500"
-                      style={{ width: `${goalProgressPct}%` }}
-                    />
-                  </div>
-                  <span className="text-[11px] sm:text-xs font-mono font-bold text-emerald-400">{goalProgressPct}%</span>
-                </div>
-              )}
+                )}
 
-              {/* FLOATING METRICS HUD */}
-              <div className="relative z-20 mt-auto p-4 sm:p-6 bg-gradient-to-t from-slate-950 via-slate-950/90 to-transparent pt-8 space-y-4 pb-[max(1.75rem,env(safe-area-inset-bottom))]">
-                {/* Distance Metric */}
+                <div className="rounded-full bg-slate-950/85 backdrop-blur-md border border-white/10 px-2.5 py-1.5 flex items-center gap-1.5 text-[11px] font-mono text-slate-300 shadow-xl">
+                  <Compass className="h-3.5 w-3.5 text-sky-400" />
+                  <span>{deviceHeading}&deg;</span>
+                </div>
+              </div>
+
+              {/* METRICS HUD */}
+              <div className="relative z-20 mt-auto p-4 sm:p-6 bg-gradient-to-t from-slate-950 via-slate-950/95 to-transparent pt-8 space-y-4 pb-[max(1.75rem,env(safe-area-inset-bottom))]">
                 <div className="text-center space-y-0">
                   <span className="text-[10px] sm:text-xs font-extrabold uppercase tracking-widest text-slate-400">
-                    Distance (KM)
+                    Kilometers
                   </span>
-                  <div className="text-6xl sm:text-8xl font-black tracking-tight text-white font-mono drop-shadow-md">
+                  <div className="text-7xl sm:text-8xl font-black tracking-tight text-white font-mono drop-shadow-md">
                     {currentDistKm}
                   </div>
                 </div>
 
-                {/* 4-Metric Strava Strip */}
                 <div className="grid grid-cols-4 gap-1.5 sm:gap-2 max-w-lg mx-auto bg-white/5 backdrop-blur-md rounded-2xl p-2.5 sm:p-3 border border-white/10 text-center">
                   <div>
                     <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase block">Time</span>
-                    <span className="text-sm sm:text-lg font-black text-white font-mono">{formatTime(elapsedSeconds)}</span>
+                    <span className="text-sm sm:text-lg font-black text-white font-mono">
+                      {formatTime(activeMovingSeconds)}
+                    </span>
                   </div>
                   <div>
-                    <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase block">Pace</span>
-                    <span className="text-sm sm:text-lg font-black text-emerald-400 font-mono">{currentPace}</span>
+                    <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase block">Current Pace</span>
+                    <span className="text-sm sm:text-lg font-black text-emerald-400 font-mono">
+                      {currentPace}
+                    </span>
                   </div>
                   <div>
                     <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase block">Speed</span>
-                    <span className="text-sm sm:text-lg font-black text-sky-400 font-mono">{currentSpeedKmh}</span>
+                    <span className="text-sm sm:text-lg font-black text-sky-400 font-mono">
+                      {currentSpeedKmh} <span className="text-[9px] font-sans">km/h</span>
+                    </span>
                   </div>
                   <div>
                     <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase block">Calories</span>
-                    <span className="text-sm sm:text-lg font-black text-orange-400 font-mono">{Math.round((distanceMeters / 1000) * 65)}</span>
+                    <span className="text-sm sm:text-lg font-black text-orange-400 font-mono">
+                      {Math.round((distanceMeters / 1000) * 64)}
+                    </span>
                   </div>
                 </div>
 
@@ -740,9 +864,9 @@ function RunningTrackerPage() {
         </div>
       )}
 
-      {/* 2. REGULAR IN-APP RUNNING DASHBOARD (CLEAN & NON-SCATTERED RESPONSIVE TOP) */}
+      {/* 2. IN-APP DASHBOARD */}
       <div className="space-y-4">
-        {/* TOP TITLE SECTION */}
+        {/* TITLE HEADER */}
         <div className="flex flex-col gap-1 pb-1 border-b border-border/60">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -750,7 +874,7 @@ function RunningTrackerPage() {
                 Outdoor Running
               </h1>
               <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400">
-                <Sparkles className="h-3 w-3 shrink-0" /> Nike &amp; Strava Club
+                <Navigation2 className="h-3 w-3 shrink-0" /> Dynamic Compass GPS
               </span>
             </div>
 
@@ -765,16 +889,16 @@ function RunningTrackerPage() {
             >
               <Bell className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
               <span className="text-[11px] sm:text-xs">
-                {reminderEnabled ? "Reminder Set" : "Remind Me"}
+                {reminderEnabled ? "Reminder Set" : "Daily Reminder"}
               </span>
             </button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Live audio coach split updates, personal records, and GPS route mapping.
+            Zero-drift accurate distance tracker, live device orientation, and kilometer split announcements.
           </p>
         </div>
 
-        {/* RESPONSIVE FULL-WIDTH TAB SWITCHER */}
+        {/* TAB SWITCHER */}
         <div className="flex items-center p-1 rounded-2xl bg-muted/60 border border-border w-full sm:w-fit gap-1">
           <button
             type="button"
@@ -803,18 +927,18 @@ function RunningTrackerPage() {
 
       {activeTab === "hub" ? (
         <div className="space-y-6">
-          {/* MAIN START RUN ACTION HERO (RESPONSIVE) */}
-          <div className="rounded-3xl border border-emerald-500/30 bg-linear-to-br from-emerald-500/15 via-card to-card p-5 sm:p-8 shadow-sm relative overflow-hidden">
+          {/* HERO BANNER */}
+          <div className="rounded-3xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/15 via-card to-card p-5 sm:p-8 shadow-sm relative overflow-hidden">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 relative z-10">
               <div className="space-y-2 max-w-lg">
                 <span className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider inline-block">
-                  GPS Workout Coach
+                  High-Precision GPS Engine
                 </span>
                 <h2 className="text-xl sm:text-3xl font-black text-foreground tracking-tight leading-snug">
-                  Ready to crush today's miles?
+                  Crush your next target miles
                 </h2>
                 <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
-                  Includes 10-minute dynamic warm-up, interactive voice coach split updates, and personal records tracking.
+                  Real-time pace calculation, intelligent auto-pause, dynamic hardware compass, and voice audio splits.
                 </p>
               </div>
 
@@ -829,7 +953,7 @@ function RunningTrackerPage() {
             </div>
           </div>
 
-          {/* PERSONAL BESTS & ALL-TIME TROPHIES */}
+          {/* ALL-TIME RECORDS */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Trophy className="h-4 w-4 sm:h-5 sm:w-5 text-amber-500 shrink-0" />
@@ -874,7 +998,7 @@ function RunningTrackerPage() {
             <div className="rounded-3xl border border-border bg-card p-10 text-center text-xs text-muted-foreground space-y-2">
               <Footprints className="h-8 w-8 mx-auto text-emerald-500 opacity-50 shrink-0" />
               <p className="font-bold text-sm text-foreground">No completed runs recorded yet</p>
-              <p>Start a workout to track your pace, kilometers, and route history!</p>
+              <p>Start a workout to record accurate distance, real pace, and route history!</p>
             </div>
           ) : (
             <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
@@ -910,7 +1034,7 @@ function RunningTrackerPage() {
                         <span className="font-bold text-foreground font-mono">{formatTime(run.durationSeconds)}</span>
                       </div>
                       <div>
-                        <span className="text-[9px] font-bold text-muted-foreground uppercase block">Pace</span>
+                        <span className="text-[9px] font-bold text-muted-foreground uppercase block">Avg Pace</span>
                         <span className="font-bold text-foreground font-mono">{run.avgPace}</span>
                       </div>
                       <div>
@@ -926,14 +1050,14 @@ function RunningTrackerPage() {
         </div>
       )}
 
-      {/* TARGET GOAL SELECTION POPUP MODAL */}
+      {/* TARGET SELECTION MODAL */}
       {sessionStage === "goal-select" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs animate-in fade-in">
           <div className="w-full max-w-md rounded-3xl border border-border bg-card p-5 sm:p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-border/60 pb-3">
               <div className="flex items-center gap-2">
                 <Target className="h-5 w-5 text-emerald-500 shrink-0" />
-                <h3 className="text-base font-extrabold text-foreground">Select Run Target</h3>
+                <h3 className="text-base font-extrabold text-foreground">Select Target Distance</h3>
               </div>
               <button
                 type="button"
@@ -945,7 +1069,7 @@ function RunningTrackerPage() {
             </div>
 
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Choose your target distance. The audio coach will notify you of kilometer splits and cheer you when you reach your goal!
+              Choose your distance target. The voice coach will alert you on split times and celebrate when your goal is completed.
             </p>
 
             <div className="grid grid-cols-4 gap-2">
@@ -975,7 +1099,7 @@ function RunningTrackerPage() {
               onClick={handleConfirmGoalAndStartWarmup}
               className="w-full cursor-pointer flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-3.5 text-xs font-extrabold text-white shadow-md hover:bg-emerald-600 active:scale-95 transition mt-2"
             >
-              <span>Begin Warm-up Session</span>
+              <span>Start Warm-up Session</span>
               <ChevronRight className="h-4 w-4 shrink-0" />
             </button>
           </div>
@@ -1001,7 +1125,7 @@ function RunningTrackerPage() {
             </div>
 
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Choose your preferred workout time. We will send an encouraging notification directly to your device.
+              Select your scheduled running hour. NutriFit will prompt you directly on your device.
             </p>
 
             <div>
@@ -1019,13 +1143,13 @@ function RunningTrackerPage() {
               onClick={handleSaveDailyReminder}
               className="w-full cursor-pointer rounded-2xl bg-emerald-500 py-3 text-xs font-extrabold text-white shadow-md hover:bg-emerald-600 active:scale-95 transition"
             >
-              Save Reminder Schedule
+              Save Schedule
             </button>
           </div>
         </div>
       )}
 
-      {/* SUMMARY MODAL AFTER RUN */}
+      {/* COMPLETED WORKOUT SUMMARY */}
       {completedSummary && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs animate-in fade-in">
           <div className="w-full max-w-md rounded-3xl border border-border bg-card p-5 sm:p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
@@ -1052,20 +1176,28 @@ function RunningTrackerPage() {
 
             <div className="grid grid-cols-2 gap-2.5">
               <div className="rounded-2xl bg-muted/40 p-3 text-center">
-                <span className="text-[10px] font-bold text-muted-foreground uppercase block">Duration</span>
-                <span className="text-base font-extrabold text-foreground font-mono">{formatTime(completedSummary.durationSeconds)}</span>
+                <span className="text-[10px] font-bold text-muted-foreground uppercase block">Moving Time</span>
+                <span className="text-base font-extrabold text-foreground font-mono">
+                  {formatTime(completedSummary.durationSeconds)}
+                </span>
               </div>
               <div className="rounded-2xl bg-muted/40 p-3 text-center">
                 <span className="text-[10px] font-bold text-muted-foreground uppercase block">Avg Pace</span>
-                <span className="text-base font-extrabold text-emerald-500 font-mono">{completedSummary.avgPace} /km</span>
+                <span className="text-base font-extrabold text-emerald-500 font-mono">
+                  {completedSummary.avgPace} /km
+                </span>
               </div>
               <div className="rounded-2xl bg-muted/40 p-3 text-center">
                 <span className="text-[10px] font-bold text-muted-foreground uppercase block">Calories</span>
-                <span className="text-base font-extrabold text-orange-500 font-mono">{completedSummary.calories} kcal</span>
+                <span className="text-base font-extrabold text-orange-500 font-mono">
+                  {completedSummary.calories} kcal
+                </span>
               </div>
               <div className="rounded-2xl bg-muted/40 p-3 text-center">
                 <span className="text-[10px] font-bold text-muted-foreground uppercase block">Steps</span>
-                <span className="text-base font-extrabold text-sky-500 font-mono">{completedSummary.steps.toLocaleString()}</span>
+                <span className="text-base font-extrabold text-sky-500 font-mono">
+                  {completedSummary.steps.toLocaleString()}
+                </span>
               </div>
             </div>
 
@@ -1085,5 +1217,3 @@ function RunningTrackerPage() {
     </div>
   );
 }
-
-export default RunningTrackerPage;

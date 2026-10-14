@@ -19,7 +19,7 @@ export const Route = createFileRoute("/app/nutrition")({
   head: () => ({
     meta: [
       { title: "Nutrition & Water Tracker — NutriFit" },
-      { name: "description", content: "Log meals using AI or manual entry, and track daily hydration." },
+      { name: "description", content: "Log meals using AI Gemini Food Camera or manual entry, and track daily hydration." },
     ],
   }),
   component: NutritionPage,
@@ -141,6 +141,78 @@ function NutritionPage() {
     });
   };
 
+  // Direct Google Gemini Multimodal Vision API (Strict JSON mode)
+  const analyzeFoodWithGemini = async (base64: string, mimeType: string) => {
+    const geminiKey =
+      (import.meta as any).env?.VITE_GEMINI_API_KEY ||
+      (import.meta as any).env?.GEMINI_API_KEY;
+
+    if (!geminiKey) {
+      throw new Error("Missing VITE_GEMINI_API_KEY in your .env or Render environment.");
+    }
+
+    const candidateModels = ["gemini-3.8-flash", "gemini-3.5-flash-lite"];
+    let lastError = "";
+
+    const promptText =
+      "Analyze this meal photo carefully. Identify the food item or dish and estimate portion macros accurately. " +
+      "Return ONLY a raw JSON object with this exact structure without markdown or explanation: " +
+      '{"food_name": "string", "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number}';
+
+    for (const model of candidateModels) {
+      try {
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": geminiKey.trim(),
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: "user",
+                parts: [
+                  {
+                    inlineData: {
+                      mimeType: mimeType || "image/jpeg",
+                      data: base64,
+                    },
+                  },
+                  {
+                    text: promptText,
+                  },
+                ],
+              },
+            ],
+            generationConfig: {
+              temperature: 0.2,
+              responseMimeType: "application/json",
+              maxOutputTokens: 300,
+            },
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (rawText) {
+            return JSON.parse(rawText.trim());
+          }
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          lastError = errData.error?.message || `HTTP ${res.status}`;
+          console.warn(`[${model}] vision analysis failed:`, lastError);
+        }
+      } catch (err: any) {
+        lastError = err.message;
+      }
+    }
+
+    throw new Error(lastError || "Could not complete image analysis with Gemini.");
+  };
+
   const handleFoodScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
@@ -149,107 +221,11 @@ function NutritionPage() {
 
     try {
       const { base64, mimeType } = await fileToBase64(file);
+      const nutritionData = await analyzeFoodWithGemini(base64, mimeType);
 
-      const promptText = `Analyze this food image. Estimate nutritional values and respond ONLY with a raw JSON object formatted strictly as:
-{"food_name": "string", "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number}`;
-
-      let rawText = "";
-
-      // 1. Try serverless proxy first
-      try {
-        const response = await fetch("/api/coach", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "vision",
-            system: "You are a professional nutrition vision analyst. Output strictly valid JSON without markdown wrapping, explanations, or code fences.",
-            messages: [
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "image",
-                    source: {
-                      type: "base64",
-                      media_type: mimeType,
-                      data: base64,
-                    },
-                  },
-                  {
-                    type: "text",
-                    text: promptText,
-                  },
-                ],
-              },
-            ],
-          }),
-        });
-
-        const contentType = response.headers.get("content-type") || "";
-        if (contentType.includes("application/json")) {
-          const resData = await response.json();
-          rawText = resData.content?.[0]?.text || "";
-        }
-      } catch (err) {
-        console.warn("Backend vision proxy failed, checking direct key...", err);
+      if (!nutritionData || !nutritionData.food_name) {
+        throw new Error("Could not detect nutritional contents from this picture.");
       }
-
-      // 2. Direct fallback if proxy returned HTML or failed
-      if (!rawText) {
-        const directKey =
-          (import.meta as any).env?.VITE_ANTHROPIC_API_KEY ||
-          (import.meta as any).env?.ANTHROPIC_API_KEY;
-
-        if (directKey) {
-          const directResponse = await fetch("https://api.anthropic.com/v1/messages", {
-            method: "POST",
-            headers: {
-              "x-api-key": directKey,
-              "anthropic-version": "2023-06-01",
-              "content-type": "application/json",
-              "anthropic-dangerous-direct-browser-access": "true",
-            },
-            body: JSON.stringify({
-              model: "claude-haiku-4-5-20251001",
-              max_tokens: 400,
-              system: "You are a professional nutrition vision analyst. Output strictly valid JSON without markdown wrapping, explanations, or code fences.",
-              messages: [
-                {
-                  role: "user",
-                  content: [
-                    {
-                      type: "image",
-                      source: {
-                        type: "base64",
-                        media_type: mimeType,
-                        data: base64,
-                      },
-                    },
-                    {
-                      type: "text",
-                      text: promptText,
-                    },
-                  ],
-                },
-              ],
-            }),
-          });
-
-          const directJson = await directResponse.json();
-          rawText = directJson.content?.[0]?.text || "";
-        }
-      }
-
-      if (!rawText) {
-        throw new Error("Unable to reach AI vision service. Please ensure ANTHROPIC_API_KEY is configured.");
-      }
-
-      const cleanJsonStr = rawText
-        .replace(/```json/gi, "")
-        .replace(/```/g, "")
-        .trim();
-
-      const nutritionData = JSON.parse(cleanJsonStr);
 
       const { error } = await supabase.from("food_logs").insert({
         user_id: user.id,
@@ -263,7 +239,7 @@ function NutritionPage() {
 
       if (error) throw error;
 
-      showToast(`AI Logged: ${nutritionData.food_name || "Meal"} (${nutritionData.calories || 0} kcal)! ✨`);
+      showToast(`AI Logged: ${nutritionData.food_name} (${Math.round(nutritionData.calories || 0)} kcal)! ✨`);
     } catch (err: any) {
       console.error("Food scan error:", err);
       alert("Failed to analyze food: " + (err.message || "Invalid image or server response"));
@@ -289,11 +265,11 @@ function NutritionPage() {
               Nutrition &amp; Water
             </h1>
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400">
-              <CheckCircle2 className="h-3 w-3" /> Free Feature
+              <CheckCircle2 className="h-3 w-3" /> Gemini Vision
             </span>
           </div>
           <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-            Log meals using AI or manual entry, and track your daily hydration goals.
+            Log meals using Gemini AI camera or manual entry, and track your daily hydration goals.
           </p>
         </div>
       </div>
@@ -315,7 +291,7 @@ function NutritionPage() {
             </div>
             <h2 className="font-display text-lg font-bold text-foreground">AI Food Camera</h2>
             <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-              Snap a meal photo for automatic calorie &amp; macro breakdown detection.
+              Snap a meal photo for automatic calorie &amp; macro breakdown powered by Gemini Vision.
             </p>
           </div>
 
@@ -327,7 +303,7 @@ function NutritionPage() {
           >
             {analyzing ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin" /> Analyzing Photo with AI...
+                <Loader2 className="h-4 w-4 animate-spin" /> Analyzing Photo with Gemini...
               </>
             ) : (
               <>
@@ -497,5 +473,3 @@ function NutritionPage() {
     </div>
   );
 }
-
-export default NutritionPage;
