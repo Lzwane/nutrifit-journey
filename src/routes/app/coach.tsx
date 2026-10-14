@@ -16,6 +16,8 @@ import {
   Lock,
   Check,
   ArrowRight,
+  AlertCircle,
+  Globe,
 } from "lucide-react";
 
 export const Route = createFileRoute("/app/coach")({
@@ -38,7 +40,32 @@ function cleanTextForSpeech(text: string): string {
     .replace(/__(.*?)__/g, "$1")
     .replace(/#+\s?/g, "")
     .replace(/[`~]/g, "")
+    .replace(/\[.*?\]\(.*?\)/g, "")
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/\n+/g, " ")
     .trim();
+}
+
+function requiresWebSearch(text: string): boolean {
+  const query = text.toLowerCase();
+  const searchTriggers = [
+    "marathon",
+    "olympic",
+    "weather",
+    "forecast",
+    "race",
+    "fixture",
+    "winner",
+    "medal",
+    "upcoming",
+    "latest news",
+    "current event",
+    "today's",
+    "tomorrow's",
+    "who won",
+    "score",
+  ];
+  return searchTriggers.some((keyword) => query.includes(keyword));
 }
 
 function AICoachPage() {
@@ -55,14 +82,16 @@ function AICoachPage() {
     {
       id: "1",
       sender: "coach",
-      text: "Hello! I am NutriGuide AI, your personal nutrition and fitness coach. Ask me anything about your workout routines, meal plans, macro splits, or calorie targets!",
+      text: "Hey! I'm NutriGuide AI, your real-time coach. Ask me about meal prep, workout routines, recovery tips, or upcoming races and sports events!",
     },
   ]);
   const [inputText, setInputText] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingText, setLoadingText] = useState("NutriGuide AI is thinking...");
 
   const [isVoiceActive, setIsVoiceActive] = useState(false);
   const [voiceState, setVoiceState] = useState<"idle" | "listening" | "thinking" | "speaking">("idle");
+  const [speechSupported, setSpeechSupported] = useState(true);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -72,6 +101,7 @@ function AICoachPage() {
 
   const speechAccumulatorRef = useRef<string>("");
   const silenceTimerRef = useRef<any>(null);
+  const mobileAudioUnlockedRef = useRef<boolean>(false);
 
   useEffect(() => {
     voiceStateRef.current = voiceState;
@@ -85,17 +115,43 @@ function AICoachPage() {
     scrollToBottom();
   }, [messages]);
 
-  const speakText = (text: string, onEnd?: () => void) => {
-    if (!("speechSynthesis" in window)) return;
-    window.speechSynthesis.cancel();
+  const unlockMobileAudio = () => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    try {
+      window.speechSynthesis.resume();
+      if (!mobileAudioUnlockedRef.current) {
+        const dummy = new SpeechSynthesisUtterance(" ");
+        dummy.volume = 0.01;
+        dummy.rate = 10;
+        window.speechSynthesis.speak(dummy);
+        mobileAudioUnlockedRef.current = true;
+      }
+    } catch (_) {}
+  };
 
-    const utterance = new SpeechSynthesisUtterance(cleanTextForSpeech(text));
-    utterance.rate = 1.0;
+  const speakText = (text: string, onEnd?: () => void) => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.resume();
+
+    const clean = cleanTextForSpeech(text);
+    if (!clean) return;
+
+    const utterance = new SpeechSynthesisUtterance(clean);
+    utterance.rate = 1.05;
     utterance.pitch = 1.0;
 
     const voices = window.speechSynthesis.getVoices();
     const naturalVoice = voices.find(
-      (v) => v.lang.startsWith("en") && (v.name.includes("Natural") || v.name.includes("Google") || v.name.includes("Samantha"))
+      (v) =>
+        v.lang.startsWith("en") &&
+        (v.name.includes("Natural") ||
+          v.name.includes("Google") ||
+          v.name.includes("Samantha") ||
+          v.name.includes("Arthur") ||
+          v.name.includes("Karen") ||
+          v.name.includes("Siri"))
     );
     if (naturalVoice) utterance.voice = naturalVoice;
 
@@ -104,18 +160,28 @@ function AICoachPage() {
         setVoiceState("listening");
         try {
           recognitionRef.current?.start();
-        } catch (e) {}
+        } catch (_) {}
       } else {
         setVoiceState("idle");
       }
       if (onEnd) onEnd();
     };
 
+    utterance.onerror = (e) => {
+      console.warn("Speech playback notice:", e);
+      if (isVoiceActiveRef.current) {
+        setVoiceState("listening");
+        try {
+          recognitionRef.current?.start();
+        } catch (_) {}
+      }
+    };
+
     window.speechSynthesis.speak(utterance);
   };
 
   const interruptCoach = () => {
-    if (window.speechSynthesis?.speaking) {
+    if (typeof window !== "undefined" && "speechSynthesis" in window && window.speechSynthesis.speaking) {
       window.speechSynthesis.cancel();
     }
     if (abortControllerRef.current) {
@@ -135,145 +201,217 @@ function AICoachPage() {
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
-    if (SpeechRecognition) {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = "en-US";
-
-      recognition.onstart = () => {
-        if (isVoiceActiveRef.current && voiceStateRef.current !== "speaking" && voiceStateRef.current !== "thinking") {
-          setVoiceState("listening");
-        }
-      };
-
-      recognition.onresult = (event: any) => {
-        if (!isVoiceActiveRef.current) return;
-        if (voiceStateRef.current === "speaking" || voiceStateRef.current === "thinking") {
-          return;
-        }
-
-        let interimText = "";
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            speechAccumulatorRef.current += " " + event.results[i][0].transcript;
-          } else {
-            interimText += event.results[i][0].transcript;
-          }
-        }
-
-        const currentCaptured = (speechAccumulatorRef.current + " " + interimText).trim();
-
-        if (currentCaptured) {
-          if (silenceTimerRef.current) {
-            clearTimeout(silenceTimerRef.current);
-          }
-
-          silenceTimerRef.current = setTimeout(() => {
-            const finalPrompt = speechAccumulatorRef.current.trim() || currentCaptured;
-            speechAccumulatorRef.current = "";
-            silenceTimerRef.current = null;
-
-            if (finalPrompt && isVoiceActiveRef.current) {
-              handleHandsFreeQuery(finalPrompt);
-            }
-          }, 1500);
-        }
-      };
-
-      recognition.onend = () => {
-        if (isVoiceActiveRef.current && voiceStateRef.current !== "speaking" && voiceStateRef.current !== "thinking") {
-          try {
-            recognition.start();
-          } catch (e) {}
-        }
-      };
-
-      recognition.onerror = (e: any) => {
-        if (e.error !== "no-speech" && isVoiceActiveRef.current) {
-          setTimeout(() => {
-            try {
-              recognition.start();
-            } catch (err) {}
-          }, 600);
-        }
-      };
-
-      recognitionRef.current = recognition;
+    if (!SpeechRecognition) {
+      setSpeechSupported(false);
+      return;
     }
 
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-ZA";
+
+    recognition.onstart = () => {
+      if (isVoiceActiveRef.current && voiceStateRef.current !== "speaking" && voiceStateRef.current !== "thinking") {
+        setVoiceState("listening");
+      }
+    };
+
+    recognition.onresult = (event: any) => {
+      if (!isVoiceActiveRef.current) return;
+
+      if (voiceStateRef.current === "speaking") {
+        interruptCoach();
+        setVoiceState("listening");
+      }
+
+      if (voiceStateRef.current === "thinking") {
+        return;
+      }
+
+      let interimText = "";
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          speechAccumulatorRef.current += " " + event.results[i][0].transcript;
+        } else {
+          interimText += event.results[i][0].transcript;
+        }
+      }
+
+      const currentCaptured = (speechAccumulatorRef.current + " " + interimText).trim();
+
+      if (currentCaptured) {
+        if (silenceTimerRef.current) {
+          clearTimeout(silenceTimerRef.current);
+        }
+
+        silenceTimerRef.current = setTimeout(() => {
+          const finalPrompt = speechAccumulatorRef.current.trim() || currentCaptured;
+          speechAccumulatorRef.current = "";
+          silenceTimerRef.current = null;
+
+          if (finalPrompt.trim().length >= 3 && isVoiceActiveRef.current) {
+            handleHandsFreeQuery(finalPrompt);
+          }
+        }, 1500);
+      }
+    };
+
+    recognition.onend = () => {
+      if (isVoiceActiveRef.current && voiceStateRef.current !== "speaking" && voiceStateRef.current !== "thinking") {
+        try {
+          recognition.start();
+        } catch (_) {}
+      }
+    };
+
+    recognition.onerror = (e: any) => {
+      if (e.error === "not-allowed") {
+        setIsVoiceActive(false);
+        isVoiceActiveRef.current = false;
+        setVoiceState("idle");
+        alert("Microphone permission was denied. Please allow microphone access in your browser or device settings.");
+        return;
+      }
+
+      if (e.error !== "no-speech" && isVoiceActiveRef.current) {
+        setTimeout(() => {
+          try {
+            recognition.start();
+          } catch (_) {}
+        }, 400);
+      }
+    };
+
+    recognitionRef.current = recognition;
+
     return () => {
-      window.speechSynthesis?.cancel();
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     };
   }, [hasAccess]);
 
-  const callClaudeService = async (prompt: string, signal?: AbortSignal): Promise<string> => {
+  const callAIService = async (prompt: string, callerSignal?: AbortSignal): Promise<string> => {
+    const isSearchNeeded = requiresWebSearch(prompt);
+
     const systemPrompt =
-      "You are NutriGuide AI, an encouraging and highly knowledgeable personal nutrition & fitness coach. " +
-      "Provide detailed, actionable, and encouraging explanations. " +
-      "When asked about meals, break down estimated macros (protein, carbs, fats) and calorie counts clearly. " +
-      "When asked about workouts, explain proper form, sets, reps, and recovery techniques. " +
-      "STRICT RULE: Do NOT use markdown formatting, bold markers (**), bullet asterisks (*), or headers (#). " +
-      "Write clean, natural plain text with smooth sentence flow suitable for direct voice reading.";
+      "You are NutriGuide AI, an encouraging, highly knowledgeable personal nutrition, running, and athletic coach on the NutriFit app. " +
+      "Maintain a friendly, authentic, and direct conversational tone like an expert personal trainer. " +
+      "Give clear, practical details without being overly brief or padded with fluff. " +
+      "CRITICAL: Do NOT output markdown symbols, asterisks (*), hashtags (#), or bullet dashes. Deliver clean, natural spoken prose with smooth sentences that read aloud effortlessly.";
 
-    // 1. Try Serverless Endpoint First
-    try {
-      const response = await fetch("/api/coach", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal,
-        body: JSON.stringify({
-          system: systemPrompt,
-          messages: [{ role: "user", content: prompt }],
-        }),
-      });
+    const geminiKey =
+      (import.meta as any).env?.VITE_GEMINI_API_KEY ||
+      (import.meta as any).env?.GEMINI_API_KEY;
 
-      const contentType = response.headers.get("content-type") || "";
-      if (contentType.includes("application/json")) {
-        const data = await response.json();
-        if (response.ok && data.content?.[0]?.text) {
-          return data.content[0].text;
+    if (!geminiKey) {
+      throw new Error("Missing VITE_GEMINI_API_KEY in your .env file.");
+    }
+
+    const activeModels = [
+      "gemini-3.5-flash-lite",
+      "gemini-3.8-flash",
+      "gemini-3.7-flash",
+    ];
+
+    let lastErrorMsg = "";
+
+    for (const model of activeModels) {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+      const requestPayload: any = {
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: `${systemPrompt}\n\nUser Question: ${prompt}` }],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.6,
+          maxOutputTokens: 280,
+        },
+      };
+
+      if (isSearchNeeded) {
+        requestPayload.tools = [{ googleSearch: {} }];
+      }
+
+      const timeoutController = new AbortController();
+      const timeoutId = setTimeout(() => timeoutController.abort(), isSearchNeeded ? 5000 : 3500);
+
+      try {
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": geminiKey.trim(),
+          },
+          signal: callerSignal || timeoutController.signal,
+          body: JSON.stringify(requestPayload),
+        });
+
+        clearTimeout(timeoutId);
+
+        if (res.status === 429) {
+          throw new Error("You're speaking faster than the coach can process! Give it a 5-second breather.");
+        }
+
+        if (res.ok) {
+          const data = await res.json();
+          const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (candidateText) {
+            return candidateText;
+          }
+        }
+
+        if (isSearchNeeded) {
+          delete requestPayload.tools;
+          const fallbackRes = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-goog-api-key": geminiKey.trim(),
+            },
+            signal: callerSignal,
+            body: JSON.stringify(requestPayload),
+          });
+
+          if (fallbackRes.ok) {
+            const fallbackData = await fallbackRes.json();
+            const fallbackText = fallbackData.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (fallbackText) return fallbackText;
+          }
+        }
+
+        const errData = await res.json().catch(() => ({}));
+        lastErrorMsg = errData.error?.message || `HTTP ${res.status}`;
+        console.warn(`[${model}] rejected (${res.status}), trying next candidate...`);
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        if (err.message && err.message.includes("5-second breather")) {
+          throw err;
+        }
+        if (err.name === "AbortError" && !callerSignal?.aborted) {
+          console.warn(`[${model}] timed out, hopping to next candidate...`);
+        } else if (callerSignal?.aborted) {
+          throw err;
+        } else {
+          lastErrorMsg = err.message;
         }
       }
-    } catch (e) {
-      console.warn("Backend /api/coach unreachable, checking fallback...", e);
     }
 
-    // 2. Direct Browser Fallback (if client-side key exists during local dev)
-    const directKey =
-      (import.meta as any).env?.VITE_ANTHROPIC_API_KEY ||
-      (import.meta as any).env?.ANTHROPIC_API_KEY;
-
-    if (directKey) {
-      const directResponse = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": directKey,
-          "anthropic-version": "2023-06-01",
-          "content-type": "application/json",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
-        signal,
-        body: JSON.stringify({
-          model: "claude-haiku-4-5-20251001",
-          max_tokens: 450,
-          system: systemPrompt,
-          messages: [{ role: "user", content: prompt }],
-        }),
-      });
-
-      const directData = await directResponse.json();
-      if (directResponse.ok && directData.content?.[0]?.text) {
-        return directData.content[0].text;
-      }
-    }
-
-    throw new Error("Unable to connect to AI Coach. Please ensure ANTHROPIC_API_KEY is saved in your Vercel Environment Variables.");
+    throw new Error(lastErrorMsg || "The coach is catching its breath. Please ask again in a moment.");
   };
 
   const handleHandsFreeQuery = async (userPrompt: string) => {
     interruptCoach();
+    unlockMobileAudio();
+
+    const isDeep = requiresWebSearch(userPrompt);
+    setLoadingText(isDeep ? "NutriGuide AI is researching the web..." : "NutriGuide AI is thinking...");
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -285,7 +423,7 @@ function AICoachPage() {
     setMessages((prev) => [...prev, userMsg]);
 
     try {
-      const reply = await callClaudeService(userPrompt, controller.signal);
+      const reply = await callAIService(userPrompt, controller.signal);
       const cleanReply = cleanTextForSpeech(reply);
 
       const coachMsg: Message = { id: (Date.now() + 1).toString(), sender: "coach", text: cleanReply };
@@ -296,22 +434,27 @@ function AICoachPage() {
     } catch (err: any) {
       if (err.name === "AbortError") return;
 
-      console.error("Voice query failed:", err);
+      console.error("Voice query error:", err);
       setVoiceState("listening");
       setMessages((prev) => [
         ...prev,
-        { id: Date.now().toString(), sender: "coach", text: `Error: ${err.message || "Failed to reach AI Coach."}` },
+        { id: Date.now().toString(), sender: "coach", text: `Sorry, I ran into an issue: ${err.message || "Failed to connect."}` },
       ]);
       try {
         recognitionRef.current?.start();
-      } catch (e) {}
+      } catch (_) {}
     } finally {
       setLoading(false);
     }
   };
 
   const handleOrbClick = () => {
-    if (!recognitionRef.current) return;
+    unlockMobileAudio();
+
+    if (!recognitionRef.current) {
+      alert("Microphone recognition is not supported in this browser. Chrome or Safari is recommended.");
+      return;
+    }
 
     speechAccumulatorRef.current = "";
     if (silenceTimerRef.current) {
@@ -325,7 +468,7 @@ function AICoachPage() {
       setVoiceState("listening");
       try {
         recognitionRef.current.start();
-      } catch (e) {}
+      } catch (_) {}
       return;
     }
 
@@ -336,12 +479,14 @@ function AICoachPage() {
       setTimeout(() => {
         try {
           recognitionRef.current.start();
-        } catch (e) {}
+        } catch (_) {}
       }, 150);
-    } catch (e) {}
+    } catch (_) {}
   };
 
   const toggleLiveVoiceMode = () => {
+    unlockMobileAudio();
+
     if (!recognitionRef.current) {
       alert("Voice input is supported in Chrome, Edge, and Safari.");
       return;
@@ -360,7 +505,7 @@ function AICoachPage() {
       interruptCoach();
       try {
         recognitionRef.current.stop();
-      } catch (e) {}
+      } catch (_) {}
     } else {
       isVoiceActiveRef.current = true;
       setIsVoiceActive(true);
@@ -368,7 +513,7 @@ function AICoachPage() {
       interruptCoach();
       try {
         recognitionRef.current.start();
-      } catch (e) {}
+      } catch (_) {}
     }
   };
 
@@ -376,8 +521,13 @@ function AICoachPage() {
     if (e) e.preventDefault();
     if (!inputText.trim() || loading) return;
 
+    unlockMobileAudio();
     interruptCoach();
+
     const userPrompt = inputText.trim();
+    const isDeep = requiresWebSearch(userPrompt);
+    setLoadingText(isDeep ? "NutriGuide AI is researching the web..." : "NutriGuide AI is thinking...");
+
     setInputText("");
     setLoading(true);
 
@@ -385,7 +535,7 @@ function AICoachPage() {
     setMessages((prev) => [...prev, userMsg]);
 
     try {
-      const reply = await callClaudeService(userPrompt);
+      const reply = await callAIService(userPrompt);
       const cleanReply = cleanTextForSpeech(reply);
 
       const coachMsg: Message = { id: (Date.now() + 1).toString(), sender: "coach", text: cleanReply };
@@ -425,22 +575,22 @@ function AICoachPage() {
               NutriGuide AI Voice Coach
             </h2>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Your 60-day free trial has concluded and your account is on the Free Tier. Workouts and manual tracking remain free forever. Unlock unlimited real-time AI voice and nutrition guidance for R49.00/month.
+              Unlock unlimited live conversational AI coaching, race search, Olympic standings, and custom macro analysis for R49.00/month.
             </p>
           </div>
 
           <div className="rounded-2xl border border-border bg-muted/30 p-4 text-left text-xs space-y-2 text-muted-foreground">
             <div className="flex items-center gap-2">
               <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-              <span>Unlimited live conversational AI voice coach</span>
+              <span>Ultra-fast real-time voice conversations</span>
             </div>
             <div className="flex items-center gap-2">
               <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-              <span>Verified macro and meal calorie breakdown</span>
+              <span>Live Google web search for marathons &amp; race stats</span>
             </div>
             <div className="flex items-center gap-2">
               <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-              <span>Cancel or pause subscription anytime</span>
+              <span>Detailed macro splits &amp; workout coaching</span>
             </div>
           </div>
 
@@ -470,8 +620,13 @@ function AICoachPage() {
             <Bot className="h-5 w-5 shrink-0" />
           </div>
           <div>
-            <h1 className="text-base font-extrabold text-foreground leading-none">NutriGuide AI</h1>
-            <p className="text-[11px] text-muted-foreground mt-1">Tap Circle to Interrupt &amp; Speak</p>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base font-extrabold text-foreground leading-none">NutriGuide AI</h1>
+              <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[9px] font-bold text-emerald-500">
+                <Globe className="h-2.5 w-2.5" /> Smart Web
+              </span>
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1">Real-time Voice &bull; Fast Responses</p>
           </div>
         </div>
 
@@ -510,6 +665,13 @@ function AICoachPage() {
           </button>
         </div>
       </div>
+
+      {!speechSupported && activeTab === "voice" && (
+        <div className="my-2 rounded-2xl bg-amber-500/10 border border-amber-500/30 p-3 flex items-center gap-2.5 text-xs text-amber-600 dark:text-amber-400">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>Speech Recognition is limited on this browser. Chrome or Safari is recommended.</span>
+        </div>
+      )}
 
       {activeTab === "voice" ? (
         <div className="flex-1 flex flex-col items-center justify-between py-6 px-4 text-center relative overflow-hidden w-full my-auto">
@@ -566,12 +728,12 @@ function AICoachPage() {
               )}
               {voiceState === "thinking" && (
                 <span className="text-amber-500 flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin shrink-0" /> Analyzing response...
+                  <Loader2 className="h-4 w-4 animate-spin shrink-0" /> {loadingText}
                 </span>
               )}
               {voiceState === "speaking" && (
                 <span className="text-orange-500 flex items-center gap-2">
-                  <Volume2 className="h-4 w-4 animate-pulse shrink-0" /> Speaking (Tap circle to interrupt)
+                  <Volume2 className="h-4 w-4 animate-pulse shrink-0" /> Speaking (Tap orb to interrupt)
                 </span>
               )}
               {voiceState === "idle" && (
@@ -636,7 +798,10 @@ function AICoachPage() {
                   {m.sender === "coach" && (
                     <button
                       type="button"
-                      onClick={() => speakText(m.text)}
+                      onClick={() => {
+                        unlockMobileAudio();
+                        speakText(m.text);
+                      }}
                       className="mt-2 flex items-center gap-1.5 text-[10px] font-bold text-emerald-500 hover:underline cursor-pointer"
                     >
                       <Volume2 className="h-3 w-3 shrink-0" /> Replay Audio
@@ -649,7 +814,7 @@ function AICoachPage() {
             {loading && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground p-2">
                 <Loader2 className="h-4 w-4 animate-spin text-emerald-500 shrink-0" />
-                <span>NutriGuide AI is thinking...</span>
+                <span>{loadingText}</span>
               </div>
             )}
 
@@ -660,7 +825,7 @@ function AICoachPage() {
             <input
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder="Ask about calories, macros, or workouts..."
+              placeholder="Ask about calories, training, marathons, or workouts..."
               className="flex-1 rounded-2xl border border-input bg-card px-4 py-3 text-xs sm:text-sm text-foreground outline-none focus:ring-2 focus:ring-emerald-500 shadow-xs"
             />
 
@@ -677,5 +842,3 @@ function AICoachPage() {
     </div>
   );
 }
-
-export default AICoachPage;

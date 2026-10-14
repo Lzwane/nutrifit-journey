@@ -2,10 +2,15 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { NutriFitLogo } from "@/components/app/logo";
-import { Download } from "lucide-react";
+import { Download, Loader2, MailCheck } from "lucide-react";
 import { InstallGuideModal } from "@/components/install-guide-modal";
 
-const ADMIN_EMAIL = "officialnutrifit01@gmail.com";
+const ADMIN_EMAILS = [
+  "officialnutrifit01@gmail.com",
+  "admin@nutrifit.co.za",
+  "admin@nutrifit-app.co.za",
+  "thobejanetheo803@gmail.com",
+];
 
 export const Route = createFileRoute("/auth")({
   component: AuthPage,
@@ -17,6 +22,7 @@ function AuthPage() {
   const navigate = useNavigate();
   const [mode, setMode] = useState<AuthMode>("signin");
   const [loading, setLoading] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -29,6 +35,43 @@ function AuthPage() {
   const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [isStandaloneApp, setIsStandaloneApp] = useState(true);
 
+  // Route user to /admin, /app (if completed), or /onboarding (if new)
+  const routeUserAfterAuth = async (user: any) => {
+    if (!user) return;
+
+    const userEmail = (user.email || "").toLowerCase().trim();
+    const isEmailAdmin = ADMIN_EMAILS.includes(userEmail);
+    const isRoleAdmin = user.app_metadata?.role === "admin";
+
+    if (isEmailAdmin || isRoleAdmin) {
+      navigate({ to: "/admin" });
+      return;
+    }
+
+    try {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("onboarding_completed, starting_weight_kg, goal_weight_kg")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      const hasCompletedOnboarding =
+        profile?.onboarding_completed === true ||
+        (profile?.starting_weight_kg !== null &&
+          profile?.starting_weight_kg !== undefined &&
+          profile?.goal_weight_kg !== null &&
+          profile?.goal_weight_kg !== undefined);
+
+      if (hasCompletedOnboarding) {
+        navigate({ to: "/app" });
+      } else {
+        navigate({ to: "/onboarding" });
+      }
+    } catch {
+      navigate({ to: "/onboarding" });
+    }
+  };
+
   useEffect(() => {
     const isStandalone =
       typeof window !== "undefined" &&
@@ -38,13 +81,32 @@ function AuthPage() {
 
     setIsStandaloneApp(isStandalone);
 
-    // Auto-show on first visit in a web browser
     if (!isStandalone) {
       const hasSeen = localStorage.getItem("nutrifit_install_seen");
       if (!hasSeen) {
         setShowInstallGuide(true);
       }
     }
+
+    // Handle OAuth redirects (Google sign-in)
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === "SIGNED_IN" && session?.user) {
+          await routeUserAfterAuth(session.user);
+        }
+      }
+    );
+
+    // Check existing active session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        routeUserAfterAuth(session.user);
+      }
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
   const handleCloseGuide = () => {
@@ -72,9 +134,9 @@ function AuthPage() {
           redirectTo: `${window.location.origin}/auth?reset=true`,
         });
         if (error) throw error;
-        setSuccessMsg("Password reset email sent! Check your inbox.");
+        setSuccessMsg("Password reset email sent! Please check your inbox.");
       } else if (mode === "signup") {
-        if (cleanEmail === ADMIN_EMAIL) {
+        if (ADMIN_EMAILS.includes(cleanEmail)) {
           setErrorMsg("This email is reserved for system administration. Please sign in instead.");
           setLoading(false);
           return;
@@ -84,19 +146,24 @@ function AuthPage() {
           email: cleanEmail,
           password,
           options: {
+            emailRedirectTo: `${window.location.origin}/auth`,
             data: {
-              first_name: firstName,
-              last_name: lastName,
-              full_name: `${firstName} ${lastName}`.trim(),
+              first_name: firstName.trim(),
+              last_name: lastName.trim(),
+              full_name: `${firstName.trim()} ${lastName.trim()}`.trim(),
             },
           },
         });
+
         if (error) throw error;
 
-        if (data.user) {
-          navigate({ to: "/onboarding" });
-        } else {
-          setSuccessMsg("Account created! Please check your email to confirm.");
+        // If email confirmation is required by Supabase
+        if (data.user && !data.session) {
+          setSuccessMsg(
+            `A confirmation link has been sent to ${cleanEmail}. Please verify your email before continuing!`
+          );
+        } else if (data.user && data.session) {
+          await routeUserAfterAuth(data.user);
         }
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({
@@ -106,13 +173,8 @@ function AuthPage() {
 
         if (error) throw error;
 
-        const isEmailAdmin = data.user?.email?.toLowerCase().trim() === ADMIN_EMAIL;
-        const isRoleAdmin = data.user?.app_metadata?.role === "admin";
-
-        if (data.user && (isEmailAdmin || isRoleAdmin)) {
-          navigate({ to: "/admin" });
-        } else {
-          navigate({ to: "/app" });
+        if (data.user) {
+          await routeUserAfterAuth(data.user);
         }
       }
     } catch (err: any) {
@@ -125,23 +187,29 @@ function AuthPage() {
   const handleGoogleLogin = async () => {
     setErrorMsg(null);
     setSuccessMsg(null);
+    setOauthLoading(true);
+
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/onboarding`,
+          redirectTo: `${window.location.origin}/auth`,
+          queryParams: {
+            access_type: "offline",
+            prompt: "consent",
+          },
         },
       });
+
       if (error) throw error;
     } catch (err: any) {
-      setErrorMsg(err.message || "Failed to sign in with Google.");
+      setErrorMsg(err.message || "Failed to connect to Google.");
+      setOauthLoading(false);
     }
   };
 
   return (
-    <div className="relative flex min-h-[100dvh] flex-col items-center justify-between bg-background px-4 py-10 sm:py-16">
-      
-      {/* SMALL TOP-RIGHT INSTALL APP BUTTON (Only visible on web browser, hidden in app) */}
+    <div className="relative flex min-h-[100dvh] flex-col items-center justify-between bg-background px-4 py-10 sm:py-16 font-sans">
       {!isStandaloneApp && (
         <div className="absolute top-4 right-4 z-20">
           <button
@@ -155,11 +223,7 @@ function AuthPage() {
         </div>
       )}
 
-      {/* FULL APP INSTALL GUIDE MODAL */}
-      <InstallGuideModal
-        isOpen={showInstallGuide}
-        onClose={handleCloseGuide}
-      />
+      <InstallGuideModal isOpen={showInstallGuide} onClose={handleCloseGuide} />
 
       <div className="hidden sm:block" />
 
@@ -181,7 +245,11 @@ function AuthPage() {
           </div>
 
           <h2 className="mt-2 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-            {mode === "signup" ? "Create an account" : mode === "forgot" ? "Reset password" : "Welcome back"}
+            {mode === "signup"
+              ? "Create an account"
+              : mode === "forgot"
+              ? "Reset password"
+              : "Welcome back"}
           </h2>
           <p className="mt-1.5 text-xs text-muted-foreground sm:text-sm">
             {mode === "signup"
@@ -193,18 +261,19 @@ function AuthPage() {
         </div>
 
         {errorMsg && (
-          <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-3.5 text-center text-xs font-medium text-destructive">
+          <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-3.5 text-center text-xs font-medium text-destructive animate-in fade-in">
             {errorMsg}
           </div>
         )}
 
         {successMsg && (
-          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3.5 text-center text-xs font-medium text-emerald-600 dark:text-emerald-400">
-            {successMsg}
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3.5 text-center text-xs font-medium text-emerald-600 dark:text-emerald-400 space-y-1 animate-in fade-in">
+            <MailCheck className="h-5 w-5 mx-auto text-emerald-500" />
+            <p>{successMsg}</p>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
           {mode === "signup" && (
             <div className="grid grid-cols-2 gap-3">
               <div className="relative">
@@ -215,11 +284,11 @@ function AuthPage() {
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
                   placeholder=" "
-                  className="peer w-full rounded-xl border border-input bg-background px-4 py-3.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="peer w-full rounded-xl border border-input bg-background px-4 py-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 />
                 <label
                   htmlFor="firstName"
-                  className="pointer-events-none absolute left-3 top-3.5 origin-left text-sm font-medium text-muted-foreground transition-all duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-top-2.5 peer-focus:left-3 peer-focus:-translate-y-0 peer-focus:bg-card peer-focus:px-1.5 peer-focus:text-xs peer-focus:font-bold peer-focus:text-primary peer-[:not(:placeholder-shown)]:-top-2.5 peer-[:not(:placeholder-shown)]:left-3 peer-[:not(:placeholder-shown)]:bg-card peer-[:not(:placeholder-shown)]:px-1.5 peer-[:not(:placeholder-shown)]:text-xs peer-[:not(:placeholder-shown)]:font-bold peer-[:not(:placeholder-shown)]:text-primary"
+                  className="pointer-events-none absolute left-3 top-3 origin-left text-xs font-medium text-muted-foreground transition-all duration-200 peer-placeholder-shown:translate-y-0.5 peer-placeholder-shown:text-sm peer-focus:-top-2.5 peer-focus:left-3 peer-focus:bg-card peer-focus:px-1.5 peer-focus:text-xs peer-focus:font-bold peer-focus:text-primary peer-[:not(:placeholder-shown)]:-top-2.5 peer-[:not(:placeholder-shown)]:left-3 peer-[:not(:placeholder-shown)]:bg-card peer-[:not(:placeholder-shown)]:px-1.5 peer-[:not(:placeholder-shown)]:text-xs peer-[:not(:placeholder-shown)]:font-bold peer-[:not(:placeholder-shown)]:text-primary"
                 >
                   First Name
                 </label>
@@ -233,11 +302,11 @@ function AuthPage() {
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
                   placeholder=" "
-                  className="peer w-full rounded-xl border border-input bg-background px-4 py-3.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="peer w-full rounded-xl border border-input bg-background px-4 py-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 />
                 <label
                   htmlFor="lastName"
-                  className="pointer-events-none absolute left-3 top-3.5 origin-left text-sm font-medium text-muted-foreground transition-all duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-top-2.5 peer-focus:left-3 peer-focus:-translate-y-0 peer-focus:bg-card peer-focus:px-1.5 peer-focus:text-xs peer-focus:font-bold peer-focus:text-primary peer-[:not(:placeholder-shown)]:-top-2.5 peer-[:not(:placeholder-shown)]:left-3 peer-[:not(:placeholder-shown)]:bg-card peer-[:not(:placeholder-shown)]:px-1.5 peer-[:not(:placeholder-shown)]:text-xs peer-[:not(:placeholder-shown)]:font-bold peer-[:not(:placeholder-shown)]:text-primary"
+                  className="pointer-events-none absolute left-3 top-3 origin-left text-xs font-medium text-muted-foreground transition-all duration-200 peer-placeholder-shown:translate-y-0.5 peer-placeholder-shown:text-sm peer-focus:-top-2.5 peer-focus:left-3 peer-focus:bg-card peer-focus:px-1.5 peer-focus:text-xs peer-focus:font-bold peer-focus:text-primary peer-[:not(:placeholder-shown)]:-top-2.5 peer-[:not(:placeholder-shown)]:left-3 peer-[:not(:placeholder-shown)]:bg-card peer-[:not(:placeholder-shown)]:px-1.5 peer-[:not(:placeholder-shown)]:text-xs peer-[:not(:placeholder-shown)]:font-bold peer-[:not(:placeholder-shown)]:text-primary"
                 >
                   Last Name
                 </label>
@@ -253,18 +322,18 @@ function AuthPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder=" "
-              className="peer w-full rounded-xl border border-input bg-background px-4 py-3.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              className="peer w-full rounded-xl border border-input bg-background px-4 py-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
             <label
               htmlFor="email"
-              className="pointer-events-none absolute left-3 top-3.5 origin-left text-sm font-medium text-muted-foreground transition-all duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-top-2.5 peer-focus:left-3 peer-focus:-translate-y-0 peer-focus:bg-card peer-focus:px-1.5 peer-focus:text-xs peer-focus:font-bold peer-focus:text-primary peer-[:not(:placeholder-shown)]:-top-2.5 peer-[:not(:placeholder-shown)]:left-3 peer-[:not(:placeholder-shown)]:bg-card peer-[:not(:placeholder-shown)]:px-1.5 peer-[:not(:placeholder-shown)]:text-xs peer-[:not(:placeholder-shown)]:font-bold peer-[:not(:placeholder-shown)]:text-primary"
+              className="pointer-events-none absolute left-3 top-3 origin-left text-xs font-medium text-muted-foreground transition-all duration-200 peer-placeholder-shown:translate-y-0.5 peer-placeholder-shown:text-sm peer-focus:-top-2.5 peer-focus:left-3 peer-focus:bg-card peer-focus:px-1.5 peer-focus:text-xs peer-focus:font-bold peer-focus:text-primary peer-[:not(:placeholder-shown)]:-top-2.5 peer-[:not(:placeholder-shown)]:left-3 peer-[:not(:placeholder-shown)]:bg-card peer-[:not(:placeholder-shown)]:px-1.5 peer-[:not(:placeholder-shown)]:text-xs peer-[:not(:placeholder-shown)]:font-bold peer-[:not(:placeholder-shown)]:text-primary"
             >
               Email Address
             </label>
           </div>
 
           {mode !== "forgot" && (
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <div className="relative">
                 <input
                   type="password"
@@ -273,11 +342,11 @@ function AuthPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder=" "
-                  className="peer w-full rounded-xl border border-input bg-background px-4 py-3.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="peer w-full rounded-xl border border-input bg-background px-4 py-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 />
                 <label
                   htmlFor="password"
-                  className="pointer-events-none absolute left-3 top-3.5 origin-left text-sm font-medium text-muted-foreground transition-all duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-top-2.5 peer-focus:left-3 peer-focus:-translate-y-0 peer-focus:bg-card peer-focus:px-1.5 peer-focus:text-xs peer-focus:font-bold peer-focus:text-primary peer-[:not(:placeholder-shown)]:-top-2.5 peer-[:not(:placeholder-shown)]:left-3 peer-[:not(:placeholder-shown)]:bg-card peer-[:not(:placeholder-shown)]:px-1.5 peer-[:not(:placeholder-shown)]:text-xs peer-[:not(:placeholder-shown)]:font-bold peer-[:not(:placeholder-shown)]:text-primary"
+                  className="pointer-events-none absolute left-3 top-3 origin-left text-xs font-medium text-muted-foreground transition-all duration-200 peer-placeholder-shown:translate-y-0.5 peer-placeholder-shown:text-sm peer-focus:-top-2.5 peer-focus:left-3 peer-focus:bg-card peer-focus:px-1.5 peer-focus:text-xs peer-focus:font-bold peer-focus:text-primary peer-[:not(:placeholder-shown)]:-top-2.5 peer-[:not(:placeholder-shown)]:left-3 peer-[:not(:placeholder-shown)]:bg-card peer-[:not(:placeholder-shown)]:px-1.5 peer-[:not(:placeholder-shown)]:text-xs peer-[:not(:placeholder-shown)]:font-bold peer-[:not(:placeholder-shown)]:text-primary"
                 >
                   Password
                 </label>
@@ -299,51 +368,59 @@ function AuthPage() {
 
           <button
             type="submit"
-            disabled={loading}
-            className="w-full cursor-pointer rounded-xl bg-primary py-3.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={loading || oauthLoading}
+            className="w-full cursor-pointer flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading
-              ? "Processing..."
-              : mode === "forgot"
-              ? "Send Reset Link"
-              : mode === "signup"
-              ? "Create Account"
-              : "Sign In"}
+            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+            <span>
+              {loading
+                ? "Processing..."
+                : mode === "forgot"
+                ? "Send Reset Link"
+                : mode === "signup"
+                ? "Create Account"
+                : "Sign In"}
+            </span>
           </button>
         </form>
 
-        <div className="relative my-6 flex items-center justify-center">
+        <div className="relative my-4 flex items-center justify-center">
           <div className="w-full border-t border-border" />
-          <span className="absolute bg-card px-3 text-xs uppercase tracking-wider text-muted-foreground">
+          <span className="absolute bg-card px-3 text-[11px] uppercase tracking-wider text-muted-foreground">
             or continue with
           </span>
         </div>
 
-        <div className="pt-1">
+        <div>
           <button
             type="button"
+            disabled={oauthLoading || loading}
             onClick={handleGoogleLogin}
-            className="flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl border border-input bg-background py-3.5 text-sm font-medium text-foreground transition hover:bg-accent hover:text-accent-foreground active:scale-[0.99]"
+            className="flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl border border-input bg-background py-3 text-sm font-medium text-foreground transition hover:bg-accent hover:text-accent-foreground active:scale-[0.99] disabled:opacity-50"
           >
-            <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24">
-              <path
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                fill="#4285F4"
-              />
-              <path
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                fill="#34A853"
-              />
-              <path
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                fill="#FBBC05"
-              />
-              <path
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                fill="#EA4335"
-              />
-            </svg>
-            Google
+            {oauthLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            ) : (
+              <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24">
+                <path
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  fill="#4285F4"
+                />
+                <path
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  fill="#34A853"
+                />
+                <path
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                  fill="#FBBC05"
+                />
+                <path
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                  fill="#EA4335"
+                />
+              </svg>
+            )}
+            <span>{oauthLoading ? "Connecting to Google..." : "Continue with Google"}</span>
           </button>
         </div>
 

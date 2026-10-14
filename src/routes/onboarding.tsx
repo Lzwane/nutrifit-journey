@@ -2,7 +2,17 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { NutriFitLogo } from "@/components/app/logo";
-import { ArrowRight, ArrowLeft, Check, Sparkles, Scale, Target, Flame, Dumbbell } from "lucide-react";
+import {
+  ArrowRight,
+  ArrowLeft,
+  Check,
+  Sparkles,
+  Scale,
+  Target,
+  Flame,
+  Dumbbell,
+  Loader2,
+} from "lucide-react";
 
 export const Route = createFileRoute("/onboarding")({
   component: OnboardingPage,
@@ -12,6 +22,7 @@ function OnboardingPage() {
   const navigate = useNavigate();
   const [step, setStep] = useState<number>(1);
   const [loading, setLoading] = useState<boolean>(false);
+  const [checkingStatus, setCheckingStatus] = useState<boolean>(true);
   const [userId, setUserId] = useState<string | null>(null);
 
   // Question Inputs
@@ -23,14 +34,45 @@ function OnboardingPage() {
   const [fitnessGoal, setFitnessGoal] = useState("maintain");
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) {
-        setUserId(data.user.id);
-      } else {
-        // Fallback to auth if no user session found
+    async function checkUserAndOnboardingStatus() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
         navigate({ to: "/auth" });
+        return;
       }
-    });
+
+      setUserId(user.id);
+
+      // Guard: If account already has onboarding completed, skip directly to /app
+      try {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("onboarding_completed, starting_weight_kg, goal_weight_kg")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        const hasCompleted =
+          profile?.onboarding_completed === true ||
+          (profile?.starting_weight_kg !== null &&
+            profile?.starting_weight_kg !== undefined &&
+            profile?.goal_weight_kg !== null &&
+            profile?.goal_weight_kg !== undefined);
+
+        if (hasCompleted) {
+          navigate({ to: "/app" });
+          return;
+        }
+      } catch (e) {
+        console.error("Profile check notice:", e);
+      } finally {
+        setCheckingStatus(false);
+      }
+    }
+
+    checkUserAndOnboardingStatus();
   }, [navigate]);
 
   const getSuggestedGoalWeights = () => {
@@ -62,6 +104,7 @@ function OnboardingPage() {
           daily_calorie_goal: dailyCalorieGoal,
           activity_level: activityLevel,
           fitness_goal: fitnessGoal,
+          onboarding_completed: true,
         } as any);
 
         await supabase.from("weight_logs").insert({
@@ -73,17 +116,23 @@ function OnboardingPage() {
       console.error("Onboarding profile save notice:", err);
     } finally {
       setLoading(false);
-      // Navigates directly to the dashboard when button is clicked
       navigate({ to: "/app" });
     }
   };
 
+  if (checkingStatus) {
+    return (
+      <div className="flex min-h-[100dvh] items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
-    <div className="flex min-h-[100dvh] flex-col items-center justify-between bg-background px-4 py-10 sm:py-16">
+    <div className="flex min-h-[100dvh] flex-col items-center justify-between bg-background px-4 py-10 sm:py-16 font-sans">
       <div className="hidden sm:block" />
 
       <div className="my-auto w-full max-w-md space-y-7 rounded-3xl border border-border bg-card p-6 shadow-sm sm:p-10">
-        
         {/* Header */}
         <div className="flex flex-col items-center text-center">
           <div className="mb-4 flex items-center justify-center gap-3">
@@ -384,7 +433,6 @@ function OnboardingPage() {
             </div>
           </div>
         )}
-
       </div>
 
       <footer className="mt-8 text-center text-[11px] text-muted-foreground/50 sm:text-xs">
@@ -393,3 +441,5 @@ function OnboardingPage() {
     </div>
   );
 }
+
+export default OnboardingPage;
