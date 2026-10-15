@@ -35,6 +35,7 @@ interface Message {
 
 function cleanTextForSpeech(text: string): string {
   return text
+    .replace(/\[\d+\]/g, "")
     .replace(/\*\*(.*?)\*\*/g, "$1")
     .replace(/\*(.*?)\*/g, "$1")
     .replace(/__(.*?)__/g, "$1")
@@ -44,28 +45,6 @@ function cleanTextForSpeech(text: string): string {
     .replace(/https?:\/\/\S+/g, "")
     .replace(/\n+/g, " ")
     .trim();
-}
-
-function requiresWebSearch(text: string): boolean {
-  const query = text.toLowerCase();
-  const searchTriggers = [
-    "marathon",
-    "olympic",
-    "weather",
-    "forecast",
-    "race",
-    "fixture",
-    "winner",
-    "medal",
-    "upcoming",
-    "latest news",
-    "current event",
-    "today's",
-    "tomorrow's",
-    "who won",
-    "score",
-  ];
-  return searchTriggers.some((keyword) => query.includes(keyword));
 }
 
 function AICoachPage() {
@@ -82,7 +61,7 @@ function AICoachPage() {
     {
       id: "1",
       sender: "coach",
-      text: "Hey! I'm NutriGuide AI, your real-time coach. Ask me about meal prep, workout routines, recovery tips, or upcoming races and sports events!",
+      text: "Hey! I'm NutriGuide AI, your real-time running and fitness coach. Tap the circle button whenever you want to ask me anything!",
     },
   ]);
   const [inputText, setInputText] = useState("");
@@ -115,6 +94,7 @@ function AICoachPage() {
     scrollToBottom();
   }, [messages]);
 
+  // Unlock iOS Safari / Mobile PWA AudioContext on user touch
   const unlockMobileAudio = () => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
     try {
@@ -156,25 +136,17 @@ function AICoachPage() {
     if (naturalVoice) utterance.voice = naturalVoice;
 
     utterance.onend = () => {
-      if (isVoiceActiveRef.current) {
-        setVoiceState("listening");
-        try {
-          recognitionRef.current?.start();
-        } catch (_) {}
-      } else {
-        setVoiceState("idle");
-      }
+      // After speaking finishes, DO NOT auto-listen. Wait for user tap.
+      setVoiceState("idle");
+      try {
+        recognitionRef.current?.stop();
+      } catch (_) {}
       if (onEnd) onEnd();
     };
 
     utterance.onerror = (e) => {
       console.warn("Speech playback notice:", e);
-      if (isVoiceActiveRef.current) {
-        setVoiceState("listening");
-        try {
-          recognitionRef.current?.start();
-        } catch (_) {}
-      }
+      setVoiceState("idle");
     };
 
     window.speechSynthesis.speak(utterance);
@@ -195,6 +167,27 @@ function AICoachPage() {
     setLoading(false);
   };
 
+  const terminateEntireSession = () => {
+    isVoiceActiveRef.current = false;
+    setIsVoiceActive(false);
+    setVoiceState("idle");
+    interruptCoach();
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+        recognitionRef.current.abort();
+      } catch (_) {}
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      terminateEntireSession();
+    };
+  }, []);
+
+  // Initialize Speech Recognition
   useEffect(() => {
     if (!hasAccess) return;
 
@@ -212,22 +205,14 @@ function AICoachPage() {
     recognition.lang = "en-ZA";
 
     recognition.onstart = () => {
-      if (isVoiceActiveRef.current && voiceStateRef.current !== "speaking" && voiceStateRef.current !== "thinking") {
+      if (isVoiceActiveRef.current) {
         setVoiceState("listening");
       }
     };
 
     recognition.onresult = (event: any) => {
-      if (!isVoiceActiveRef.current) return;
-
-      if (voiceStateRef.current === "speaking") {
-        interruptCoach();
-        setVoiceState("listening");
-      }
-
-      if (voiceStateRef.current === "thinking") {
-        return;
-      }
+      // Ignore microphone input while speaking or thinking — NO accidental interruptions
+      if (!isVoiceActiveRef.current || voiceStateRef.current !== "listening") return;
 
       let interimText = "";
       for (let i = event.resultIndex; i < event.results.length; ++i) {
@@ -251,14 +236,18 @@ function AICoachPage() {
           silenceTimerRef.current = null;
 
           if (finalPrompt.trim().length >= 3 && isVoiceActiveRef.current) {
+            try {
+              recognition.stop();
+            } catch (_) {}
             handleHandsFreeQuery(finalPrompt);
           }
-        }, 1500);
+        }, 1400);
       }
     };
 
     recognition.onend = () => {
-      if (isVoiceActiveRef.current && voiceStateRef.current !== "speaking" && voiceStateRef.current !== "thinking") {
+      // Only keep listening if explicitly in the listening state
+      if (isVoiceActiveRef.current && voiceStateRef.current === "listening") {
         try {
           recognition.start();
         } catch (_) {}
@@ -267,17 +256,17 @@ function AICoachPage() {
 
     recognition.onerror = (e: any) => {
       if (e.error === "not-allowed") {
-        setIsVoiceActive(false);
-        isVoiceActiveRef.current = false;
-        setVoiceState("idle");
+        terminateEntireSession();
         alert("Microphone permission was denied. Please allow microphone access in your browser or device settings.");
         return;
       }
 
-      if (e.error !== "no-speech" && isVoiceActiveRef.current) {
+      if (e.error !== "no-speech" && isVoiceActiveRef.current && voiceStateRef.current === "listening") {
         setTimeout(() => {
           try {
-            recognition.start();
+            if (isVoiceActiveRef.current && voiceStateRef.current === "listening") {
+              recognition.start();
+            }
           } catch (_) {}
         }, 400);
       }
@@ -286,133 +275,80 @@ function AICoachPage() {
     recognitionRef.current = recognition;
 
     return () => {
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-      }
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      try {
+        recognition.stop();
+      } catch (_) {}
     };
   }, [hasAccess]);
 
+  // Perplexity Agent API Integration (/v1/responses)
   const callAIService = async (prompt: string, callerSignal?: AbortSignal): Promise<string> => {
-    const isSearchNeeded = requiresWebSearch(prompt);
+    const apiKey =
+      (import.meta as any).env?.VITE_PERPLEXITY_API_KEY ||
+      (import.meta as any).env?.PERPLEXITY_API_KEY;
 
-    const systemPrompt =
-      "You are NutriGuide AI, an encouraging, highly knowledgeable personal nutrition, running, and athletic coach on the NutriFit app. " +
-      "Maintain a friendly, authentic, and direct conversational tone like an expert personal trainer. " +
-      "Give clear, practical details without being overly brief or padded with fluff. " +
-      "CRITICAL: Do NOT output markdown symbols, asterisks (*), hashtags (#), or bullet dashes. Deliver clean, natural spoken prose with smooth sentences that read aloud effortlessly.";
-
-    const geminiKey =
-      (import.meta as any).env?.VITE_GEMINI_API_KEY ||
-      (import.meta as any).env?.GEMINI_API_KEY;
-
-    if (!geminiKey) {
-      throw new Error("Missing VITE_GEMINI_API_KEY in your .env file.");
+    if (!apiKey) {
+      throw new Error("Missing VITE_PERPLEXITY_API_KEY in your .env or Render environment.");
     }
 
-    const activeModels = [
-      "gemini-3.5-flash-lite",
-      "gemini-3.8-flash",
-      "gemini-3.7-flash",
-    ];
+    const todayDate = new Date().toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
 
-    let lastErrorMsg = "";
+    const instructions =
+      `You are NutriGuide AI, an encouraging and highly knowledgeable personal nutrition, running, and athletic coach on the NutriFit app. ` +
+      `Today's date is ${todayDate}. ` +
+      `Maintain a friendly, authentic, and direct conversational tone like an expert personal trainer. ` +
+      `You have real-time live internet search to research upcoming marathons, race dates, locations, Olympic results, current weather, and nutritional macros. ` +
+      `For everyday training or meal questions, give clear, practical instructions. ` +
+      `CRITICAL: Do NOT output markdown symbols, asterisks (*), hashtags (#), bullet dashes, or citation brackets [1]. Deliver clean, natural spoken prose with smooth sentences that read aloud effortlessly.`;
 
-    for (const model of activeModels) {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+    const res = await fetch("https://api.perplexity.ai/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey.trim()}`,
+      },
+      signal: callerSignal,
+      body: JSON.stringify({
+        preset: "fast",
+        instructions,
+        input: prompt,
+        max_output_tokens: 350,
+      }),
+    });
 
-      const requestPayload: any = {
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: `${systemPrompt}\n\nUser Question: ${prompt}` }],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.6,
-          maxOutputTokens: 280,
-        },
-      };
-
-      if (isSearchNeeded) {
-        requestPayload.tools = [{ googleSearch: {} }];
-      }
-
-      const timeoutController = new AbortController();
-      const timeoutId = setTimeout(() => timeoutController.abort(), isSearchNeeded ? 5000 : 3500);
-
-      try {
-        const res = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": geminiKey.trim(),
-          },
-          signal: callerSignal || timeoutController.signal,
-          body: JSON.stringify(requestPayload),
-        });
-
-        clearTimeout(timeoutId);
-
-        if (res.status === 429) {
-          throw new Error("You're speaking faster than the coach can process! Give it a 5-second breather.");
-        }
-
-        if (res.ok) {
-          const data = await res.json();
-          const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (candidateText) {
-            return candidateText;
-          }
-        }
-
-        if (isSearchNeeded) {
-          delete requestPayload.tools;
-          const fallbackRes = await fetch(endpoint, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-goog-api-key": geminiKey.trim(),
-            },
-            signal: callerSignal,
-            body: JSON.stringify(requestPayload),
-          });
-
-          if (fallbackRes.ok) {
-            const fallbackData = await fallbackRes.json();
-            const fallbackText = fallbackData.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (fallbackText) return fallbackText;
-          }
-        }
-
-        const errData = await res.json().catch(() => ({}));
-        lastErrorMsg = errData.error?.message || `HTTP ${res.status}`;
-        console.warn(`[${model}] rejected (${res.status}), trying next candidate...`);
-      } catch (err: any) {
-        clearTimeout(timeoutId);
-        if (err.message && err.message.includes("5-second breather")) {
-          throw err;
-        }
-        if (err.name === "AbortError" && !callerSignal?.aborted) {
-          console.warn(`[${model}] timed out, hopping to next candidate...`);
-        } else if (callerSignal?.aborted) {
-          throw err;
-        } else {
-          lastErrorMsg = err.message;
-        }
-      }
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error?.message || `Perplexity Agent API error (${res.status})`);
     }
 
-    throw new Error(lastErrorMsg || "The coach is catching its breath. Please ask again in a moment.");
+    const data = await res.json();
+
+    let reply = data.output_text;
+    if (!reply && Array.isArray(data.output)) {
+      reply = data.output
+        .flatMap((item: any) => item.content || [])
+        .filter((c: any) => c.type === "output_text" || c.text)
+        .map((c: any) => c.text || "")
+        .join(" ");
+    }
+
+    if (!reply) {
+      throw new Error("No response received from NutriGuide AI.");
+    }
+
+    return cleanTextForSpeech(reply);
   };
 
   const handleHandsFreeQuery = async (userPrompt: string) => {
     interruptCoach();
     unlockMobileAudio();
 
-    const isDeep = requiresWebSearch(userPrompt);
-    setLoadingText(isDeep ? "NutriGuide AI is researching the web..." : "NutriGuide AI is thinking...");
-
+    setLoadingText("NutriGuide AI is thinking...");
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
@@ -424,30 +360,28 @@ function AICoachPage() {
 
     try {
       const reply = await callAIService(userPrompt, controller.signal);
-      const cleanReply = cleanTextForSpeech(reply);
 
-      const coachMsg: Message = { id: (Date.now() + 1).toString(), sender: "coach", text: cleanReply };
+      const coachMsg: Message = { id: (Date.now() + 1).toString(), sender: "coach", text: reply };
       setMessages((prev) => [...prev, coachMsg]);
 
+      // Speak back out loud
       setVoiceState("speaking");
-      speakText(cleanReply);
+      speakText(reply);
     } catch (err: any) {
       if (err.name === "AbortError") return;
 
       console.error("Voice query error:", err);
-      setVoiceState("listening");
+      setVoiceState("idle");
       setMessages((prev) => [
         ...prev,
         { id: Date.now().toString(), sender: "coach", text: `Sorry, I ran into an issue: ${err.message || "Failed to connect."}` },
       ]);
-      try {
-        recognitionRef.current?.start();
-      } catch (_) {}
     } finally {
       setLoading(false);
     }
   };
 
+  // Button Tap Controls: explicitly start listening or tap to interrupt
   const handleOrbClick = () => {
     unlockMobileAudio();
 
@@ -462,7 +396,9 @@ function AICoachPage() {
       silenceTimerRef.current = null;
     }
 
-    if (!isVoiceActive) {
+    // 1. If currently speaking, tapping the circle interrupts the AI and readies for user input
+    if (voiceState === "speaking") {
+      interruptCoach();
       isVoiceActiveRef.current = true;
       setIsVoiceActive(true);
       setVoiceState("listening");
@@ -472,15 +408,22 @@ function AICoachPage() {
       return;
     }
 
+    // 2. If already listening, tap to stop listening
+    if (voiceState === "listening") {
+      setVoiceState("idle");
+      try {
+        recognitionRef.current.stop();
+      } catch (_) {}
+      return;
+    }
+
+    // 3. If idle, tap to START listening
+    isVoiceActiveRef.current = true;
+    setIsVoiceActive(true);
     interruptCoach();
     setVoiceState("listening");
     try {
-      recognitionRef.current.stop();
-      setTimeout(() => {
-        try {
-          recognitionRef.current.start();
-        } catch (_) {}
-      }, 150);
+      recognitionRef.current.start();
     } catch (_) {}
   };
 
@@ -492,28 +435,12 @@ function AICoachPage() {
       return;
     }
 
-    speechAccumulatorRef.current = "";
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
-    }
-
     if (isVoiceActive) {
-      isVoiceActiveRef.current = false;
-      setIsVoiceActive(false);
-      setVoiceState("idle");
-      interruptCoach();
-      try {
-        recognitionRef.current.stop();
-      } catch (_) {}
+      terminateEntireSession();
     } else {
       isVoiceActiveRef.current = true;
       setIsVoiceActive(true);
-      setVoiceState("listening");
-      interruptCoach();
-      try {
-        recognitionRef.current.start();
-      } catch (_) {}
+      handleOrbClick();
     }
   };
 
@@ -525,9 +452,7 @@ function AICoachPage() {
     interruptCoach();
 
     const userPrompt = inputText.trim();
-    const isDeep = requiresWebSearch(userPrompt);
-    setLoadingText(isDeep ? "NutriGuide AI is researching the web..." : "NutriGuide AI is thinking...");
-
+    setLoadingText("NutriGuide AI is thinking...");
     setInputText("");
     setLoading(true);
 
@@ -536,9 +461,8 @@ function AICoachPage() {
 
     try {
       const reply = await callAIService(userPrompt);
-      const cleanReply = cleanTextForSpeech(reply);
 
-      const coachMsg: Message = { id: (Date.now() + 1).toString(), sender: "coach", text: cleanReply };
+      const coachMsg: Message = { id: (Date.now() + 1).toString(), sender: "coach", text: reply };
       setMessages((prev) => [...prev, coachMsg]);
     } catch (err: any) {
       console.error("Text chat failed:", err);
@@ -586,7 +510,7 @@ function AICoachPage() {
             </div>
             <div className="flex items-center gap-2">
               <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-              <span>Live Google web search for marathons &amp; race stats</span>
+              <span>Live web search for marathons, weather &amp; sports</span>
             </div>
             <div className="flex items-center gap-2">
               <Check className="h-4 w-4 text-emerald-500 shrink-0" />
@@ -623,10 +547,10 @@ function AICoachPage() {
             <div className="flex items-center gap-2">
               <h1 className="text-base font-extrabold text-foreground leading-none">NutriGuide AI</h1>
               <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[9px] font-bold text-emerald-500">
-                <Globe className="h-2.5 w-2.5" /> Smart Web
+                <Globe className="h-2.5 w-2.5" /> Agent API Grounded
               </span>
             </div>
-            <p className="text-[11px] text-muted-foreground mt-1">Real-time Voice &bull; Fast Responses</p>
+            <p className="text-[11px] text-muted-foreground mt-1">Tap Circle to Speak</p>
           </div>
         </div>
 
@@ -650,7 +574,7 @@ function AICoachPage() {
             type="button"
             onClick={() => {
               setActiveTab("chat");
-              if (isVoiceActive) toggleLiveVoiceMode();
+              if (isVoiceActive) terminateEntireSession();
             }}
             className={`cursor-pointer flex items-center gap-1 sm:gap-1.5 rounded-xl px-3 py-1.5 text-[11px] sm:text-xs font-extrabold transition-all duration-200 ${
               activeTab === "chat"
@@ -689,7 +613,13 @@ function AICoachPage() {
             <button
               type="button"
               onClick={handleOrbClick}
-              aria-label={voiceState === "speaking" ? "Interrupt AI and speak" : "Start speaking"}
+              aria-label={
+                voiceState === "speaking"
+                  ? "Tap to interrupt"
+                  : voiceState === "listening"
+                  ? "Listening... Tap to cancel"
+                  : "Tap circle to speak"
+              }
               className={`relative flex h-44 w-44 sm:h-56 sm:w-56 items-center justify-center rounded-full transition-all duration-300 shadow-2xl cursor-pointer active:scale-95 shrink-0 border border-white/10 ${
                 voiceState === "listening"
                   ? "bg-emerald-500 ring-8 ring-emerald-500/20 shadow-emerald-500/40 scale-105"
@@ -697,7 +627,7 @@ function AICoachPage() {
                   ? "bg-amber-500 ring-8 ring-amber-500/20 shadow-amber-500/40"
                   : voiceState === "speaking"
                   ? "bg-orange-500 ring-8 ring-orange-500/20 shadow-orange-500/40 scale-105"
-                  : "bg-muted text-muted-foreground border-border shadow-none"
+                  : "bg-muted text-muted-foreground border-border shadow-none hover:border-emerald-500/50"
               }`}
             >
               <div className="flex items-center gap-1.5 pointer-events-none">
@@ -723,7 +653,7 @@ function AICoachPage() {
               {voiceState === "listening" && (
                 <span className="text-emerald-500 flex items-center gap-2">
                   <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
-                  Listening... Speak freely
+                  Listening... Tap circle to stop
                 </span>
               )}
               {voiceState === "thinking" && (
@@ -733,12 +663,12 @@ function AICoachPage() {
               )}
               {voiceState === "speaking" && (
                 <span className="text-orange-500 flex items-center gap-2">
-                  <Volume2 className="h-4 w-4 animate-pulse shrink-0" /> Speaking (Tap orb to interrupt)
+                  <Volume2 className="h-4 w-4 animate-pulse shrink-0" /> Speaking (Tap circle to interrupt)
                 </span>
               )}
               {voiceState === "idle" && (
                 <span className="text-muted-foreground text-xs font-semibold">
-                  Tap circle to start voice session
+                  Tap circle to speak
                 </span>
               )}
             </div>
@@ -749,18 +679,18 @@ function AICoachPage() {
               type="button"
               onClick={toggleLiveVoiceMode}
               className={`w-full cursor-pointer flex items-center justify-center gap-2 rounded-full py-3.5 px-6 text-xs sm:text-sm font-extrabold text-white shadow-lg transition active:scale-95 shrink-0 ${
-                isVoiceActive
+                voiceState === "listening"
                   ? "bg-rose-600 hover:bg-rose-700 shadow-rose-600/30"
                   : "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/30"
               }`}
             >
-              {isVoiceActive ? (
+              {voiceState === "listening" ? (
                 <>
-                  <Square className="h-4 w-4 fill-current shrink-0" /> End Voice Session
+                  <Square className="h-4 w-4 fill-current shrink-0" /> Stop Listening
                 </>
               ) : (
                 <>
-                  <Mic className="h-4 w-4 shrink-0" /> Start Live Voice Session
+                  <Mic className="h-4 w-4 shrink-0" /> Tap to Speak
                 </>
               )}
             </button>

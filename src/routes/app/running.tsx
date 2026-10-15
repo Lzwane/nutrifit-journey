@@ -25,6 +25,13 @@ import {
   Sparkles,
   Compass,
   Navigation2,
+  Maximize2,
+  Minimize2,
+  Plus,
+  Minus,
+  LocateFixed,
+  Gauge,
+  WifiOff,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
@@ -33,7 +40,7 @@ export const Route = createFileRoute("/app/running")({
   head: () => ({
     meta: [
       { title: "Outdoor GPS Running — NutriFit" },
-      { name: "description", content: "High-precision outdoor GPS tracker with auto-pause, directional compass, and live voice splits." },
+      { name: "description", content: "High-precision outdoor GPS tracker with background tracking, auto-pause, directional compass, and live voice splits." },
     ],
   }),
   component: RunningTrackerPage,
@@ -67,13 +74,13 @@ interface RunSummary {
 
 interface PersonalBests {
   longestDistanceKm: number;
-  fastestPace: string;
+  maxSpeedKmh: number;
   best5kTime: string;
   totalDistanceKm: number;
   totalRunsCount: number;
 }
 
-// Precise Geodesic distance calculation
+// Calculate geodesic distance between two points in meters
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371008.8; // Mean Earth radius in meters
   const phi1 = (lat1 * Math.PI) / 180;
@@ -87,6 +94,21 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
   return R * c;
+}
+
+// Calculate real direction of travel heading (0° - 360°) between two coordinates
+function calculateBearing(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const phi1 = (lat1 * Math.PI) / 180;
+  const phi2 = (lat2 * Math.PI) / 180;
+  const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+
+  const y = Math.sin(deltaLambda) * Math.cos(phi2);
+  const x =
+    Math.cos(phi1) * Math.sin(phi2) -
+    Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
+
+  const theta = Math.atan2(y, x);
+  return (theta * 180 / Math.PI + 360) % 360;
 }
 
 function formatTime(seconds: number): string {
@@ -152,6 +174,11 @@ function RunningTrackerPage() {
   const [avgPace, setAvgPace] = useState("0'00\"");
   const [isAutoPaused, setIsAutoPaused] = useState(false);
   const [deviceHeading, setDeviceHeading] = useState<number>(0);
+  const [movementBearing, setMovementBearing] = useState<number>(0);
+  const [isOffline, setIsOffline] = useState(false);
+
+  // Map View Mode (Focus on Map vs Expanded HUD)
+  const [isMapFocused, setIsMapFocused] = useState(false);
 
   const [coordinates, setCoordinates] = useState<Coordinate[]>([]);
   const [completedSummary, setCompletedSummary] = useState<RunSummary | null>(null);
@@ -172,7 +199,7 @@ function RunningTrackerPage() {
 
   const [personalBests, setPersonalBests] = useState<PersonalBests>({
     longestDistanceKm: 0,
-    fastestPace: "0'00\"",
+    maxSpeedKmh: 0,
     best5kTime: "--:--",
     totalDistanceKm: 0,
     totalRunsCount: 0,
@@ -188,6 +215,72 @@ function RunningTrackerPage() {
   const leafletMapRef = useRef<any>(null);
   const polylineLayerGroupRef = useRef<any>(null);
   const userMarkerRef = useRef<any>(null);
+  const wakeLockRef = useRef<any>(null);
+  const lastActiveTimestampRef = useRef<number>(Date.now());
+
+  // Offline / Online Status Detection
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    setIsOffline(!navigator.onLine);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  // Screen Wake Lock (Keeps CPU & GPS active in pocket)
+  useEffect(() => {
+    const acquireWakeLock = async () => {
+      if ("wakeLock" in navigator && sessionStage === "running") {
+        try {
+          wakeLockRef.current = await (navigator as any).wakeLock.request("screen");
+        } catch (_) {}
+      }
+    };
+
+    if (sessionStage === "running") {
+      acquireWakeLock();
+    } else {
+      if (wakeLockRef.current) {
+        try {
+          wakeLockRef.current.release();
+        } catch (_) {}
+        wakeLockRef.current = null;
+      }
+    }
+
+    return () => {
+      if (wakeLockRef.current) {
+        try {
+          wakeLockRef.current.release();
+        } catch (_) {}
+      }
+    };
+  }, [sessionStage]);
+
+  // Page Visibility Recovery: Fixes time skew when switching back from another app
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        if (sessionStage === "running" && !isAutoPaused) {
+          const now = Date.now();
+          const deltaSeconds = Math.round((now - lastActiveTimestampRef.current) / 1000);
+          if (deltaSeconds > 1 && deltaSeconds < 3600) {
+            setActiveMovingSeconds((prev) => prev + deltaSeconds);
+          }
+        }
+      }
+      lastActiveTimestampRef.current = Date.now();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [sessionStage, isAutoPaused]);
 
   // Calculate Personal Bests from History
   useEffect(() => {
@@ -195,32 +288,23 @@ function RunningTrackerPage() {
 
     let longest = 0;
     let totalDist = 0;
-    let fastestPaceSecs = 999999;
+    let maxOverallSpeed = 0;
     let best5k = 999999;
 
     historyRuns.forEach((r) => {
       totalDist += r.distanceKm;
       if (r.distanceKm > longest) longest = r.distanceKm;
-
-      const cleanPace = r.avgPace.replace('"', "");
-      const [m, s] = cleanPace.split("'").map(Number);
-      const paceSecs = (m || 0) * 60 + (s || 0);
-      if (paceSecs > 0 && paceSecs < fastestPaceSecs) {
-        fastestPaceSecs = paceSecs;
-      }
+      if (r.maxSpeedKmh > maxOverallSpeed) maxOverallSpeed = r.maxSpeedKmh;
 
       if (r.distanceKm >= 5 && r.durationSeconds < best5k) {
         best5k = r.durationSeconds;
       }
     });
 
-    const fM = Math.floor(fastestPaceSecs / 60);
-    const fS = Math.round(fastestPaceSecs % 60);
-
     setPersonalBests({
       longestDistanceKm: Math.round(longest * 100) / 100,
       totalDistanceKm: Math.round(totalDist * 100) / 100,
-      fastestPace: fastestPaceSecs < 999999 ? `${fM}'${fS.toString().padStart(2, "0")}"` : "0'00\"",
+      maxSpeedKmh: Math.round(maxOverallSpeed * 10) / 10,
       best5kTime: best5k < 999999 ? formatTime(best5k) : "--:--",
       totalRunsCount: historyRuns.length,
     });
@@ -245,7 +329,7 @@ function RunningTrackerPage() {
     }
   }, []);
 
-  // Hardware Compass & Phone Orientation Handler
+  // Phone Orientation & Compass Heading
   useEffect(() => {
     const handleOrientation = (e: DeviceOrientationEvent) => {
       const heading = (e as any).webkitCompassHeading ?? (e.alpha ? 360 - e.alpha : null);
@@ -267,34 +351,25 @@ function RunningTrackerPage() {
     };
   }, [sessionStage]);
 
-  // Leaflet Map Initialization
+  // Immediate Initial Location Lock & Map Setup
   useEffect(() => {
     if (sessionStage !== "running" && sessionStage !== "paused") return;
 
-    const initMap = () => {
+    const initMap = (initialCenter: [number, number]) => {
       const L = (window as any).L;
       if (!L || !mapContainerRef.current) return;
 
       if (!leafletMapRef.current) {
-        const defaultCenter =
-          coordinates.length > 0
-            ? [coordinates[coordinates.length - 1].lat, coordinates[coordinates.length - 1].lng]
-            : [-25.746, 28.188];
-
         const mapInstance = L.map(mapContainerRef.current, {
           zoomControl: false,
           attributionControl: false,
           fadeAnimation: true,
-        }).setView(defaultCenter, 18);
+        }).setView(initialCenter, 18);
 
-        // CartoDB Voyager High-Contrast Runner Tiles
-        L.tileLayer(
-          "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-          {
-            maxZoom: 20,
-            subdomains: "abcd",
-          }
-        ).addTo(mapInstance);
+        // Standard OpenStreetMap Tiles (100% Free, Works through cached offline tiles)
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          maxZoom: 19,
+        }).addTo(mapInstance);
 
         const group = L.layerGroup().addTo(mapInstance);
         polylineLayerGroupRef.current = group;
@@ -302,11 +377,24 @@ function RunningTrackerPage() {
       }
     };
 
-    const timer = setTimeout(initMap, 200);
-    return () => clearTimeout(timer);
+    // Grab true GPS coordinate immediately
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const center: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+          initMap(center);
+        },
+        () => {
+          initMap([-25.746, 28.188]);
+        },
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+      );
+    } else {
+      initMap([-25.746, 28.188]);
+    }
   }, [sessionStage]);
 
-  // Dynamic Trajectory and Directional Compass Marker
+  // Live Location Marker, Direction Cone & Polyline Path Drawing
   useEffect(() => {
     if (!leafletMapRef.current || !(window as any).L || coordinates.length === 0) return;
     const L = (window as any).L;
@@ -314,18 +402,20 @@ function RunningTrackerPage() {
     const group = polylineLayerGroupRef.current;
     const latest = coordinates[coordinates.length - 1];
 
-    const currentBearing = latest.heading ?? deviceHeading;
+    const activeHeading = latest.heading ?? (movementBearing > 0 ? movementBearing : deviceHeading);
 
     const directionalIcon = L.divIcon({
       className: "custom-runner-compass",
       html: `
-        <div style="position:relative;width:40px;height:40px;display:flex;align-items:center;justify-content:center;">
-          <div style="position:absolute;top:0;width:0;height:0;border-left:14px solid transparent;border-right:14px solid transparent;border-bottom:28px solid rgba(16,185,129,0.35);transform:translateY(-8px) rotate(${currentBearing}deg);transform-origin:bottom center;"></div>
-          <div style="background-color:#10b981;width:18px;height:18px;border-radius:50%;border:3px solid #ffffff;box-shadow:0 0 12px #10b981;z-index:10;"></div>
+        <div style="position:relative;width:44px;height:44px;display:flex;align-items:center;justify-content:center;">
+          <!-- Real direction of travel light beam -->
+          <div style="position:absolute;top:0;width:0;height:0;border-left:14px solid transparent;border-right:14px solid transparent;border-bottom:30px solid rgba(16,185,129,0.55);transform:translateY(-8px) rotate(${activeHeading}deg);transform-origin:bottom center;"></div>
+          <!-- Pulse center pin -->
+          <div style="background-color:#10b981;width:18px;height:18px;border-radius:50%;border:3px solid #ffffff;box-shadow:0 0 14px #10b981;z-index:10;"></div>
         </div>
       `,
-      iconSize: [40, 40],
-      iconAnchor: [20, 20],
+      iconSize: [44, 44],
+      iconAnchor: [22, 22],
     });
 
     if (!userMarkerRef.current) {
@@ -335,9 +425,9 @@ function RunningTrackerPage() {
       userMarkerRef.current.setIcon(directionalIcon);
     }
 
-    map.panTo([latest.lat, latest.lng], { animate: true, duration: 0.6 });
+    map.panTo([latest.lat, latest.lng], { animate: true, duration: 0.5 });
 
-    // Speed-based polyline segment styling
+    // Draw lines between recorded points
     if (coordinates.length >= 2 && group) {
       const p1 = coordinates[coordinates.length - 2];
       const p2 = coordinates[coordinates.length - 1];
@@ -358,7 +448,23 @@ function RunningTrackerPage() {
         }
       ).addTo(group);
     }
-  }, [coordinates, deviceHeading]);
+  }, [coordinates, deviceHeading, movementBearing]);
+
+  // Zoom & Recenter Handlers
+  const handleZoomIn = () => {
+    if (leafletMapRef.current) leafletMapRef.current.zoomIn();
+  };
+
+  const handleZoomOut = () => {
+    if (leafletMapRef.current) leafletMapRef.current.zoomOut();
+  };
+
+  const handleRecenter = () => {
+    if (leafletMapRef.current && coordinates.length > 0) {
+      const latest = coordinates[coordinates.length - 1];
+      leafletMapRef.current.setView([latest.lat, latest.lng], 19, { animate: true });
+    }
+  };
 
   // Warmup Countdown
   useEffect(() => {
@@ -382,11 +488,13 @@ function RunningTrackerPage() {
     return () => clearInterval(warmupTimerRef.current);
   }, [sessionStage, voiceMuted]);
 
-  // Moving Timer (Auto-pauses when stopped)
+  // Moving Timer with Auto-Pause Lock
   useEffect(() => {
     if (sessionStage === "running" && !isAutoPaused) {
+      lastActiveTimestampRef.current = Date.now();
       runTimerRef.current = setInterval(() => {
         setActiveMovingSeconds((prev) => prev + 1);
+        lastActiveTimestampRef.current = Date.now();
       }, 1000);
     } else {
       clearInterval(runTimerRef.current);
@@ -394,7 +502,7 @@ function RunningTrackerPage() {
     return () => clearInterval(runTimerRef.current);
   }, [sessionStage, isAutoPaused]);
 
-  // High-Precision GPS Engine with Auto-Pause & Noise Filter
+  // High Precision Real-Time GPS Engine (Zero-Drift Auto Pause & Movement Bearing)
   useEffect(() => {
     if (sessionStage === "running") {
       if (!("geolocation" in navigator)) {
@@ -406,13 +514,13 @@ function RunningTrackerPage() {
         (position) => {
           const { latitude, longitude, speed, accuracy, heading } = position.coords;
 
-          // Reject inaccurate GPS readings
+          // Reject inaccurate GPS bounces (> 25m)
           if (accuracy > 25) return;
 
           const rawSpeedKmh = speed !== null && speed >= 0 ? speed * 3.6 : 0;
 
-          // Auto-pause if runner stopped (speed < 2.0 km/h)
-          if (rawSpeedKmh < 2.0) {
+          // ZERO-DRIFT AUTO-PAUSE: If runner stopped (speed < 1.8 km/h), completely freeze distance and pace
+          if (rawSpeedKmh < 1.8) {
             setIsAutoPaused(true);
             setCurrentSpeedKmh(0);
             setCurrentPace("--'--\"");
@@ -422,7 +530,7 @@ function RunningTrackerPage() {
           setIsAutoPaused(false);
           setCurrentSpeedKmh(Math.round(rawSpeedKmh * 10) / 10);
 
-          // Rolling window for accurate real-time pace
+          // Rolling 5-point smoothed pace window
           recentSpeedsRef.current.push(rawSpeedKmh);
           if (recentSpeedsRef.current.length > 5) recentSpeedsRef.current.shift();
           const smoothSpeed =
@@ -450,8 +558,16 @@ function RunningTrackerPage() {
             const timeDeltaSec = (newCoord.timestamp - lastFilteredCoordRef.current.timestamp) / 1000;
             const computedSpeed = timeDeltaSec > 0 ? (deltaMeters / timeDeltaSec) * 3.6 : 0;
 
-            // Reject static GPS bounce & impossible jumps
-            if (deltaMeters >= 1.8 && computedSpeed < 45) {
+            // Strict anti-drift: Only count distance if displacement >= 1.0m and speed is under 45 km/h
+            if (deltaMeters >= 1.0 && computedSpeed < 45) {
+              const computedHeading = calculateBearing(
+                lastFilteredCoordRef.current.lat,
+                lastFilteredCoordRef.current.lng,
+                newCoord.lat,
+                newCoord.lng
+              );
+              setMovementBearing(Math.round(computedHeading));
+
               setDistanceMeters((prev) => {
                 const totalM = prev + deltaMeters;
                 setStepsCount(Math.round(totalM * 1.32));
@@ -459,7 +575,6 @@ function RunningTrackerPage() {
                 const currentKm = totalM / 1000;
                 const roundedKm = Math.floor(currentKm);
 
-                // Voice notification on each completed kilometer
                 if (roundedKm > lastSpokenKmRef.current && roundedKm > 0) {
                   lastSpokenKmRef.current = roundedKm;
                   if (!voiceMuted) {
@@ -495,7 +610,7 @@ function RunningTrackerPage() {
           }
         },
         (err) => console.warn("GPS status:", err),
-        { enableHighAccuracy: true, maximumAge: 500, timeout: 10000 }
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 }
       );
     } else {
       if (watchIdRef.current !== null) {
@@ -594,20 +709,23 @@ function RunningTrackerPage() {
     setHistoryRuns(updatedHistory);
     localStorage.setItem("nutrifit_running_history", JSON.stringify(updatedHistory));
 
+    // Save to database when network is present
     if (user && km > 0.05) {
-      await supabase.from("workout_sessions").insert({
-        user_id: user.id,
-        workout_id: "outdoor-running-session",
-        started_at: new Date(Date.now() - activeMovingSeconds * 1000).toISOString(),
-        completed_at: new Date().toISOString(),
-      } as any);
-
       try {
+        await supabase.from("workout_sessions").insert({
+          user_id: user.id,
+          workout_id: "outdoor-running-session",
+          started_at: new Date(Date.now() - activeMovingSeconds * 1000).toISOString(),
+          completed_at: new Date().toISOString(),
+        } as any);
+
         await (supabase.rpc as any)("increment_profile_steps", {
           step_increment: stepsCount,
           log_date: new Date().toISOString().slice(0, 10),
         });
-      } catch (e) {}
+      } catch (e) {
+        console.warn("Run cached locally (offline). Will synchronize later.");
+      }
     }
 
     if (!voiceMuted) {
@@ -627,7 +745,9 @@ function RunningTrackerPage() {
     setCurrentPace("--'--\"");
     setAvgPace("0'00\"");
     setIsAutoPaused(false);
+    setIsMapFocused(false);
     setCoordinates([]);
+    setMovementBearing(0);
     lastFilteredCoordRef.current = null;
     recentSpeedsRef.current = [];
     lastSpokenKmRef.current = 0;
@@ -687,6 +807,12 @@ function RunningTrackerPage() {
                   ? "WORKOUT PAUSED"
                   : "LIVE GPS TRACKING"}
               </span>
+
+              {isOffline && (
+                <span className="hidden sm:inline-flex items-center gap-1 rounded-md bg-amber-500/20 text-amber-400 px-2 py-0.5 text-[10px] font-bold">
+                  <WifiOff className="h-3 w-3" /> Offline Buffered
+                </span>
+              )}
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
@@ -754,14 +880,57 @@ function RunningTrackerPage() {
             </div>
           )}
 
-          {/* ACTIVE RUNNING ZOOMED MAP & HUD */}
+          {/* ACTIVE RUNNING MAP & HUD */}
           {(sessionStage === "running" || sessionStage === "paused") && (
             <div className="flex-1 flex flex-col justify-between relative overflow-hidden">
               <div className="absolute inset-0 w-full h-full z-0">
                 <div ref={mapContainerRef} className="w-full h-full" />
               </div>
 
-              {/* TARGET GOAL PILL & COMPASS HEADING */}
+              {/* FLOATING ACTION TOOLBAR */}
+              <div className="absolute right-4 top-16 z-30 flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={handleZoomIn}
+                  className="p-3 rounded-2xl bg-slate-950/85 hover:bg-slate-900 border border-white/20 text-white shadow-xl backdrop-blur-md transition active:scale-90 cursor-pointer"
+                  title="Zoom In"
+                >
+                  <Plus className="h-4 w-4 text-emerald-400" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleZoomOut}
+                  className="p-3 rounded-2xl bg-slate-950/85 hover:bg-slate-900 border border-white/20 text-white shadow-xl backdrop-blur-md transition active:scale-90 cursor-pointer"
+                  title="Zoom Out"
+                >
+                  <Minus className="h-4 w-4 text-slate-300" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleRecenter}
+                  className="p-3 rounded-2xl bg-slate-950/85 hover:bg-slate-900 border border-white/20 text-white shadow-xl backdrop-blur-md transition active:scale-90 cursor-pointer"
+                  title="Recenter Location"
+                >
+                  <LocateFixed className="h-4 w-4 text-sky-400" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsMapFocused(!isMapFocused)}
+                  className={`p-3 rounded-2xl border shadow-xl backdrop-blur-md transition active:scale-90 cursor-pointer ${
+                    isMapFocused
+                      ? "bg-emerald-500 text-white border-emerald-400"
+                      : "bg-slate-950/85 hover:bg-slate-900 border-white/20 text-white"
+                  }`}
+                  title={isMapFocused ? "Restore Dashboard" : "Focus on Map"}
+                >
+                  {isMapFocused ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                </button>
+              </div>
+
+              {/* TARGET GOAL PILL & LIVE HEADING */}
               <div className="relative z-20 self-center mt-2 flex items-center gap-2">
                 {targetGoalKm && (
                   <div className="rounded-full bg-slate-950/85 backdrop-blur-md border border-white/10 px-3.5 py-1.5 flex items-center gap-2.5 shadow-xl">
@@ -783,81 +952,124 @@ function RunningTrackerPage() {
 
                 <div className="rounded-full bg-slate-950/85 backdrop-blur-md border border-white/10 px-2.5 py-1.5 flex items-center gap-1.5 text-[11px] font-mono text-slate-300 shadow-xl">
                   <Compass className="h-3.5 w-3.5 text-sky-400" />
-                  <span>{deviceHeading}&deg;</span>
+                  <span>{movementBearing > 0 ? movementBearing : deviceHeading}&deg;</span>
                 </div>
               </div>
 
-              {/* METRICS HUD */}
-              <div className="relative z-20 mt-auto p-4 sm:p-6 bg-gradient-to-t from-slate-950 via-slate-950/95 to-transparent pt-8 space-y-4 pb-[max(1.75rem,env(safe-area-inset-bottom))]">
-                <div className="text-center space-y-0">
-                  <span className="text-[10px] sm:text-xs font-extrabold uppercase tracking-widest text-slate-400">
-                    Kilometers
-                  </span>
-                  <div className="text-7xl sm:text-8xl font-black tracking-tight text-white font-mono drop-shadow-md">
-                    {currentDistKm}
-                  </div>
-                </div>
+              {/* DYNAMIC METRICS HUD */}
+              <div
+                className={`relative z-20 mt-auto transition-all duration-300 bg-gradient-to-t from-slate-950 via-slate-950/95 to-transparent pb-[max(1.75rem,env(safe-area-inset-bottom))] ${
+                  isMapFocused ? "p-3 pt-4" : "p-4 sm:p-6 pt-8 space-y-4"
+                }`}
+              >
+                {/* Minimized Bar for Map Focus Mode */}
+                {isMapFocused ? (
+                  <div className="flex items-center justify-between max-w-md mx-auto bg-slate-950/90 backdrop-blur-md rounded-2xl px-4 py-2 border border-white/20 shadow-2xl">
+                    <div className="flex items-baseline gap-1 font-mono">
+                      <span className="text-2xl font-black text-white">{currentDistKm}</span>
+                      <span className="text-xs text-slate-400 font-sans">km</span>
+                    </div>
 
-                <div className="grid grid-cols-4 gap-1.5 sm:gap-2 max-w-lg mx-auto bg-white/5 backdrop-blur-md rounded-2xl p-2.5 sm:p-3 border border-white/10 text-center">
-                  <div>
-                    <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase block">Time</span>
-                    <span className="text-sm sm:text-lg font-black text-white font-mono">
-                      {formatTime(activeMovingSeconds)}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase block">Current Pace</span>
-                    <span className="text-sm sm:text-lg font-black text-emerald-400 font-mono">
-                      {currentPace}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase block">Speed</span>
-                    <span className="text-sm sm:text-lg font-black text-sky-400 font-mono">
-                      {currentSpeedKmh} <span className="text-[9px] font-sans">km/h</span>
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase block">Calories</span>
-                    <span className="text-sm sm:text-lg font-black text-orange-400 font-mono">
-                      {Math.round((distanceMeters / 1000) * 64)}
-                    </span>
-                  </div>
-                </div>
+                    <div className="flex items-center gap-4 text-xs font-mono font-bold">
+                      <span className="text-emerald-400">{currentPace}</span>
+                      <span className="text-white">{formatTime(activeMovingSeconds)}</span>
+                    </div>
 
-                {/* Main NRC Button Controls */}
-                <div className="flex items-center justify-center gap-3 pt-1 max-w-xs mx-auto">
-                  {sessionStage === "running" ? (
-                    <button
-                      type="button"
-                      onClick={() => setSessionStage("paused")}
-                      className="w-full cursor-pointer flex items-center justify-center gap-2 rounded-full bg-amber-500 hover:bg-amber-600 py-3.5 text-sm sm:text-base font-extrabold text-slate-950 shadow-2xl shadow-amber-500/30 active:scale-95 transition"
-                    >
-                      <Pause className="h-5 w-5 fill-current shrink-0" />
-                      <span>PAUSE RUN</span>
-                    </button>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setSessionStage("running")}
-                        className="flex-1 cursor-pointer flex items-center justify-center gap-1.5 rounded-full bg-emerald-500 hover:bg-emerald-600 py-3.5 text-xs sm:text-sm font-extrabold text-white shadow-xl active:scale-95 transition"
-                      >
-                        <Play className="h-4 w-4 fill-current shrink-0" />
-                        <span>RESUME</span>
-                      </button>
+                    <div className="flex items-center gap-1.5">
+                      {sessionStage === "running" ? (
+                        <button
+                          type="button"
+                          onClick={() => setSessionStage("paused")}
+                          className="px-3 py-1.5 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs"
+                        >
+                          Pause
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setSessionStage("running")}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-500 text-white font-bold text-xs"
+                        >
+                          Resume
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Primary Distance Readout */}
+                    <div className="text-center space-y-0">
+                      <span className="text-[10px] sm:text-xs font-extrabold uppercase tracking-widest text-slate-400">
+                        Kilometers
+                      </span>
+                      <div className="text-7xl sm:text-8xl font-black tracking-tight text-white font-mono drop-shadow-md">
+                        {currentDistKm}
+                      </div>
+                    </div>
 
-                      <button
-                        type="button"
-                        onClick={handleFinishAndSaveRun}
-                        className="flex-1 cursor-pointer flex items-center justify-center gap-1.5 rounded-full bg-rose-600 hover:bg-rose-700 py-3.5 text-xs sm:text-sm font-extrabold text-white shadow-xl active:scale-95 transition"
-                      >
-                        <Square className="h-4 w-4 fill-current shrink-0" />
-                        <span>FINISH</span>
-                      </button>
-                    </>
-                  )}
-                </div>
+                    {/* 4-Metric Grid */}
+                    <div className="grid grid-cols-4 gap-1.5 sm:gap-2 max-w-lg mx-auto bg-white/5 backdrop-blur-md rounded-2xl p-2.5 sm:p-3 border border-white/10 text-center">
+                      <div>
+                        <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase block">Time</span>
+                        <span className="text-sm sm:text-lg font-black text-white font-mono">
+                          {formatTime(activeMovingSeconds)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase block">Current Pace</span>
+                        <span className="text-sm sm:text-lg font-black text-emerald-400 font-mono">
+                          {currentPace}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase block">Speed</span>
+                        <span className="text-sm sm:text-lg font-black text-sky-400 font-mono">
+                          {currentSpeedKmh} <span className="text-[9px] font-sans">km/h</span>
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase block">Calories</span>
+                        <span className="text-sm sm:text-lg font-black text-orange-400 font-mono">
+                          {Math.round((distanceMeters / 1000) * 64)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Controls */}
+                    <div className="flex items-center justify-center gap-3 pt-1 max-w-xs mx-auto">
+                      {sessionStage === "running" ? (
+                        <button
+                          type="button"
+                          onClick={() => setSessionStage("paused")}
+                          className="w-full cursor-pointer flex items-center justify-center gap-2 rounded-full bg-amber-500 hover:bg-amber-600 py-3.5 text-sm sm:text-base font-extrabold text-slate-950 shadow-2xl shadow-amber-500/30 active:scale-95 transition"
+                        >
+                          <Pause className="h-5 w-5 fill-current shrink-0" />
+                          <span>PAUSE RUN</span>
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setSessionStage("running")}
+                            className="flex-1 cursor-pointer flex items-center justify-center gap-1.5 rounded-full bg-emerald-500 hover:bg-emerald-600 py-3.5 text-xs sm:text-sm font-extrabold text-white shadow-xl active:scale-95 transition"
+                          >
+                            <Play className="h-4 w-4 fill-current shrink-0" />
+                            <span>RESUME</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={handleFinishAndSaveRun}
+                            className="flex-1 cursor-pointer flex items-center justify-center gap-1.5 rounded-full bg-rose-600 hover:bg-rose-700 py-3.5 text-xs sm:text-sm font-extrabold text-white shadow-xl active:scale-95 transition"
+                          >
+                            <Square className="h-4 w-4 fill-current shrink-0" />
+                            <span>FINISH</span>
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -894,7 +1106,7 @@ function RunningTrackerPage() {
             </button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Zero-drift accurate distance tracker, live device orientation, and kilometer split announcements.
+            Zero-drift accurate distance tracker, background tracking, and kilometer split announcements.
           </p>
         </div>
 
@@ -953,7 +1165,7 @@ function RunningTrackerPage() {
             </div>
           </div>
 
-          {/* ALL-TIME RECORDS */}
+          {/* ALL-TIME RECORDS (Replaced Best Avg Pace with Max Speed) */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Trophy className="h-4 w-4 sm:h-5 sm:w-5 text-amber-500 shrink-0" />
@@ -969,9 +1181,9 @@ function RunningTrackerPage() {
               </div>
 
               <div className="rounded-3xl border border-border bg-card p-4 shadow-xs space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Best Avg Pace</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Max Running Speed</span>
                 <p className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
-                  {personalBests.fastestPace}
+                  {personalBests.maxSpeedKmh} <span className="text-xs text-muted-foreground font-sans font-bold">km/h</span>
                 </p>
               </div>
 
